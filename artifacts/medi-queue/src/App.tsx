@@ -1,41 +1,70 @@
 import { Switch, Route, Router as WouterRouter } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
+import { ThemeProvider } from "next-themes";
+import { Toaster } from "sonner";
+import { AuthProvider } from "@/context/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { DashboardLayout } from "@/layouts/DashboardLayout";
 
-const queryClient = new QueryClient();
+import { HomePage } from "@/pages/public/Home";
+import { AboutPage } from "@/pages/public/About";
+import { ContactPage } from "@/pages/public/Contact";
+import { NotFoundPage } from "@/pages/public/NotFound";
+import { LoginPage } from "@/pages/auth/Login";
+import { SignupPage } from "@/pages/auth/Signup";
+import { DashboardHome } from "@/pages/dashboard/DashboardHome";
+import { AppointmentsPage } from "@/pages/dashboard/Appointments";
+import { QueuePage } from "@/pages/dashboard/Queue";
+import { DoctorsPage } from "@/pages/dashboard/Doctors";
+import { PatientsPage } from "@/pages/dashboard/Patients";
+import { ReportsPage } from "@/pages/dashboard/Reports";
+import { NotificationsPage } from "@/pages/dashboard/Notifications";
 
-function Home() {
+function DashboardSwitch() {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-gray-900">Replit Agent is building...</h1>
-        <p className="mt-2 text-sm text-gray-600">Your app will appear here once it's ready.</p>
-      </div>
-    </div>
-  );
-}
-
-function Router() {
-  return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route component={NotFound} />
-    </Switch>
+    <ProtectedRoute>
+      <DashboardLayout>
+        <Switch>
+          <Route path="/dashboard" component={DashboardHome} />
+          <Route path="/dashboard/appointments" component={AppointmentsPage} />
+          <Route path="/dashboard/queue" component={QueuePage} />
+          <Route path="/dashboard/doctors" component={DoctorsPage} />
+          <Route path="/dashboard/patients">
+            <ProtectedRoute roles={["doctor", "receptionist", "admin"]}>
+              <PatientsPage />
+            </ProtectedRoute>
+          </Route>
+          <Route path="/dashboard/reports">
+            <ProtectedRoute roles={["doctor", "receptionist", "admin"]}>
+              <ReportsPage />
+            </ProtectedRoute>
+          </Route>
+          <Route path="/dashboard/notifications" component={NotificationsPage} />
+          <Route component={NotFoundPage} />
+        </Switch>
+      </DashboardLayout>
+    </ProtectedRoute>
   );
 }
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+      <AuthProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
+          <Switch>
+            <Route path="/" component={HomePage} />
+            <Route path="/about" component={AboutPage} />
+            <Route path="/contact" component={ContactPage} />
+            <Route path="/login" component={LoginPage} />
+            <Route path="/signup" component={SignupPage} />
+            <Route path="/dashboard/:rest*" component={DashboardSwitch} />
+            <Route path="/dashboard" component={DashboardSwitch} />
+            <Route component={NotFoundPage} />
+          </Switch>
+          <Toaster richColors position="top-right" />
         </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
