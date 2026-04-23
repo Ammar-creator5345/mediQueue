@@ -1,0 +1,253 @@
+You are a senior full-stack engineer. Build a COMPLETE, PRODUCTION-READY Medical Appointment Scheduling & Queue Management System.
+
+⚠️ STRICT RULES (DO NOT IGNORE):
+- DO NOT generate partial code
+- DO NOT generate only UI
+- DO NOT put everything in one file
+- MUST include frontend + backend + database
+- MUST follow modular folder structure
+- MUST be runnable step-by-step
+- MUST strictly follow the SRS requirements provided
+- MUST include full system flow (end-to-end working)
+- MUST include validation, authentication, dashboards, queue system
+
+🚨 CRITICAL RULE (VERY IMPORTANT):
+- DO NOT use ANY static, mock, or hardcoded data anywhere
+- DO NOT use dummy arrays or fake JSON
+- ALL data MUST come from backend APIs
+- ALL APIs MUST connect to MongoDB Atlas
+- ALL UI must update based on REAL database changes
+
+--------------------------------------------------
+
+🧱 TECH STACK (MANDATORY)
+
+Frontend:
+- React (Vite)
+- Tailwind CSS
+- React Router
+- Axios (for ALL data fetching)
+- Yup (for form validation)
+- React Hook Form
+- Chart.js or Recharts (for graphs)
+
+Backend:
+- Node.js + Express
+- MongoDB Atlas (Mongoose)
+- Zod (for backend validation)
+- JWT Authentication
+- bcrypt (password hashing)
+
+--------------------------------------------------
+
+🗄️ DATABASE (MANDATORY)
+
+- Use MongoDB Atlas (cloud database)
+- Provide .env configuration
+- ALL data must be stored and retrieved from MongoDB
+
+Mongoose Models:
+- User (roles: Patient, Doctor, Receptionist, Admin)
+- Doctor Profile
+- Patient Profile
+- Appointment
+- Queue/Token
+- Notification
+
+--------------------------------------------------
+
+📁 FOLDER STRUCTURE (VERY IMPORTANT)
+
+Create clean structure like:
+
+/project-root
+  /client
+    /src
+      /components
+      /pages
+        /public
+        /auth
+        /dashboard
+      /layouts (Navbar, Sidebar)
+      /services (Axios API layer)
+      /hooks
+      /context (Auth context)
+      /utils
+  /server
+    /controllers
+    /routes
+    /models
+    /middlewares
+    /validators (Zod)
+    /config (MongoDB connection)
+    /services
+
+--------------------------------------------------
+
+🌐 PUBLIC WEBSITE (BEFORE LOGIN)
+
+- Home (Landing Page)
+- About
+- Contact (Yup validation form)
+- Login
+- Signup (role selection)
+
+--------------------------------------------------
+
+🔐 AUTHENTICATION
+
+- Signup → store user in MongoDB
+- Login → generate JWT
+- Protected routes
+- Role-based middleware
+
+--------------------------------------------------
+
+📊 AFTER LOGIN (MAIN SYSTEM)
+
+Layout:
+✔ Navbar  
+✔ Sidebar (role-based navigation)
+
+--------------------------------------------------
+
+📅 CORE SYSTEM (FULLY CONNECTED FLOW)
+
+⚠️ EVERYTHING MUST BE CONNECTED (NO STATIC DATA)
+
+1. APPOINTMENT SYSTEM
+
+Frontend:
+- Fetch doctors from API
+- Fetch available slots from API
+- Send booking request to backend
+
+Backend:
+- Save appointment in MongoDB
+- Prevent double booking
+- Generate appointment ID
+
+--------------------------------------------------
+
+2. QUEUE SYSTEM (REAL-TIME LOGIC)
+
+Flow MUST WORK EXACTLY LIKE THIS:
+
+Patient:
+- Books appointment → stored in DB
+- Checks in → API call → token generated → stored in DB
+
+Receptionist:
+- Fetch queue from API
+- Add walk-in → saved in DB
+- Update token status (call/hold/complete)
+
+Doctor:
+- Fetch queue from API
+- Update consultation status
+
+⚠️ Frontend must REFLECT CHANGES instantly
+
+--------------------------------------------------
+
+🔄 REAL-TIME DATA (MANDATORY)
+
+- Use polling (every 3–5 seconds) OR WebSocket
+- Queue updates must reflect immediately on UI
+- Dashboard stats must update dynamically
+
+--------------------------------------------------
+
+📊 CHARTS (REAL DATA ONLY)
+
+- Fetch data from /api/reports
+- NO static values
+
+Charts:
+- Appointments per day
+- Status distribution
+- Queue status
+- Doctor utilization
+
+--------------------------------------------------
+
+🧾 VALIDATION
+
+Frontend:
+- Use YUP for all forms
+
+Backend:
+- Use ZOD for all APIs
+
+--------------------------------------------------
+
+🔗 API CONNECTION (MANDATORY)
+
+Frontend must use Axios for ALL:
+
+- GET /api/users
+- GET /api/appointments
+- POST /api/appointments
+- GET /api/queue
+- POST /api/queue
+- PUT /api/queue/:id
+- GET /api/reports
+
+--------------------------------------------------
+
+🧠 CONTROLLERS (IMPORTANT)
+
+All controllers must:
+- Read/write from MongoDB
+- Return real data
+- Handle errors properly
+
+--------------------------------------------------
+
+⚙️ SYSTEM FLOW (STRICTLY ENFORCED)
+
+1. Signup → stored in DB  
+2. Login → JWT issued  
+3. Dashboard loads REAL data  
+4. Book appointment → saved in DB  
+5. Check-in → token created in DB  
+6. Queue updates → reflected in UI  
+7. Doctor completes → status updated  
+8. Reports update automatically  
+
+--------------------------------------------------
+
+🎨 UI/UX
+
+- Responsive
+- Dark mode + Light mode
+- Sidebar + Navbar
+- Modern SaaS design
+
+--------------------------------------------------
+
+🚀 FINAL OUTPUT REQUIRED
+
+- FULL backend code
+- FULL frontend code
+- ALL API connections working
+- MongoDB Atlas setup
+- Step-by-step run instructions
+- Seed data
+
+--------------------------------------------------
+
+⚠️ FINAL ENFORCEMENT
+
+Before finishing, VERIFY:
+
+✔ No static data anywhere  
+✔ All UI uses API calls  
+✔ All APIs use MongoDB  
+✔ Queue system works live  
+✔ Charts use real data  
+✔ Full system flow works end-to-end  
+
+If anything is static → FIX IT
+
+Continue until system is fully dynamic and working.

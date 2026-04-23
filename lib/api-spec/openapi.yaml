@@ -3,34 +3,576 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: MediQueue — medical appointment & queue management API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: auth
+  - name: doctors
+  - name: patients
+  - name: appointments
+  - name: queue
+  - name: notifications
+  - name: reports
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
           content:
             application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+
+  /auth/signup:
+    post:
+      operationId: signup
+      tags: [auth]
+      summary: Create account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SignupBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Current authenticated user
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+
+  /contact:
+    post:
+      operationId: submitContact
+      tags: [auth]
+      summary: Public contact form
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContactBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SimpleOk" }
+
+  /doctors:
+    get:
+      operationId: listDoctors
+      tags: [doctors]
+      summary: List doctors
+      parameters:
+        - in: query
+          name: specialty
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
               schema:
-                $ref: "#/components/schemas/HealthStatus"
+                type: array
+                items: { $ref: "#/components/schemas/Doctor" }
+  /doctors/{id}:
+    get:
+      operationId: getDoctor
+      tags: [doctors]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Doctor" }
+  /doctors/{id}/slots:
+    get:
+      operationId: listDoctorSlots
+      tags: [doctors]
+      summary: Available appointment slots for a doctor on a date
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: date
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+
+  /appointments:
+    get:
+      operationId: listAppointments
+      tags: [appointments]
+      summary: List appointments (filtered by role)
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+        - in: query
+          name: doctorId
+          schema: { type: integer }
+        - in: query
+          name: patientId
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Appointment" }
+    post:
+      operationId: createAppointment
+      tags: [appointments]
+      summary: Book an appointment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAppointmentBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Appointment" }
+  /appointments/{id}:
+    get:
+      operationId: getAppointment
+      tags: [appointments]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Appointment" }
+    patch:
+      operationId: updateAppointment
+      tags: [appointments]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAppointmentBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Appointment" }
+    delete:
+      operationId: cancelAppointment
+      tags: [appointments]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Cancelled }
+  /appointments/{id}/check-in:
+    post:
+      operationId: checkInAppointment
+      tags: [appointments]
+      summary: Patient check-in — generates queue token
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "201":
+          description: Token created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QueueToken" }
+
+  /queue:
+    get:
+      operationId: listQueue
+      tags: [queue]
+      summary: Get queue (today, filterable by doctor)
+      parameters:
+        - in: query
+          name: doctorId
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/QueueToken" }
+    post:
+      operationId: addWalkIn
+      tags: [queue]
+      summary: Add walk-in patient to queue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddWalkInBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QueueToken" }
+  /queue/{id}:
+    patch:
+      operationId: updateQueueToken
+      tags: [queue]
+      summary: Update token status (call/hold/complete/skip)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateQueueTokenBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QueueToken" }
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: My notifications
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Notification" }
+  /notifications/{id}/read:
+    post:
+      operationId: markNotificationRead
+      tags: [notifications]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notification" }
+
+  /reports/summary:
+    get:
+      operationId: getReportSummary
+      tags: [reports]
+      summary: Top-line dashboard counts
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReportSummary" }
+  /reports/appointments-per-day:
+    get:
+      operationId: getAppointmentsPerDay
+      tags: [reports]
+      summary: Appointment counts per day for the last N days
+      parameters:
+        - in: query
+          name: days
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DayCount" }
+  /reports/status-distribution:
+    get:
+      operationId: getStatusDistribution
+      tags: [reports]
+      summary: Appointment status breakdown
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LabelCount" }
+  /reports/queue-status:
+    get:
+      operationId: getQueueStatusReport
+      tags: [reports]
+      summary: Today's queue token status breakdown
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LabelCount" }
+  /reports/doctor-utilization:
+    get:
+      operationId: getDoctorUtilization
+      tags: [reports]
+      summary: Per-doctor appointment counts (this week)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DoctorUtilization" }
+
 components:
   schemas:
     HealthStatus:
       type: object
       properties:
-        status:
-          type: string
-      required:
-        - status
+        status: { type: string }
+      required: [status]
+    SimpleOk:
+      type: object
+      properties:
+        ok: { type: boolean }
+      required: [ok]
 
+    Role:
+      type: string
+      enum: [patient, doctor, receptionist, admin]
+
+    SignupBody:
+      type: object
+      required: [name, email, password, role]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 6 }
+        role: { $ref: "#/components/schemas/Role" }
+        phone: { type: ["string", "null"] }
+        specialty: { type: ["string", "null"] }
+    LoginBody:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token: { type: string }
+        user: { $ref: "#/components/schemas/User" }
+
+    User:
+      type: object
+      required: [id, name, email, role, createdAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        phone: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+
+    Doctor:
+      type: object
+      required: [id, userId, name, specialty, createdAt]
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        name: { type: string }
+        specialty: { type: string }
+        bio: { type: ["string", "null"] }
+        consultationMinutes: { type: integer }
+        startTime: { type: string }
+        endTime: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    ContactBody:
+      type: object
+      required: [name, email, message]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        message: { type: string, minLength: 5 }
+
+    Appointment:
+      type: object
+      required: [id, code, patientId, patientName, doctorId, doctorName, scheduledAt, status, createdAt]
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        patientId: { type: integer }
+        patientName: { type: string }
+        doctorId: { type: integer }
+        doctorName: { type: string }
+        specialty: { type: string }
+        scheduledAt: { type: string, format: date-time }
+        reason: { type: ["string", "null"] }
+        status: { type: string, enum: [scheduled, checked_in, completed, cancelled, no_show] }
+        createdAt: { type: string, format: date-time }
+    CreateAppointmentBody:
+      type: object
+      required: [doctorId, scheduledAt]
+      properties:
+        doctorId: { type: integer }
+        patientId: { type: ["integer", "null"] }
+        scheduledAt: { type: string, format: date-time }
+        reason: { type: ["string", "null"] }
+    UpdateAppointmentBody:
+      type: object
+      properties:
+        status: { type: string, enum: [scheduled, checked_in, completed, cancelled, no_show] }
+        scheduledAt: { type: ["string", "null"], format: date-time }
+        reason: { type: ["string", "null"] }
+
+    QueueToken:
+      type: object
+      required: [id, tokenNumber, patientName, doctorId, doctorName, status, source, createdAt]
+      properties:
+        id: { type: integer }
+        tokenNumber: { type: integer }
+        appointmentId: { type: ["integer", "null"] }
+        patientId: { type: ["integer", "null"] }
+        patientName: { type: string }
+        doctorId: { type: integer }
+        doctorName: { type: string }
+        status: { type: string, enum: [waiting, called, in_progress, on_hold, completed, skipped] }
+        source: { type: string, enum: [appointment, walkin] }
+        notes: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AddWalkInBody:
+      type: object
+      required: [patientName, doctorId]
+      properties:
+        patientName: { type: string }
+        patientPhone: { type: ["string", "null"] }
+        doctorId: { type: integer }
+        notes: { type: ["string", "null"] }
+    UpdateQueueTokenBody:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [waiting, called, in_progress, on_hold, completed, skipped] }
+        notes: { type: ["string", "null"] }
+
+    Notification:
+      type: object
+      required: [id, userId, title, body, read, createdAt]
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        title: { type: string }
+        body: { type: string }
+        read: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    ReportSummary:
+      type: object
+      required: [totalAppointmentsToday, waitingTokens, inProgressTokens, completedToday, totalDoctors, totalPatients]
+      properties:
+        totalAppointmentsToday: { type: integer }
+        waitingTokens: { type: integer }
+        inProgressTokens: { type: integer }
+        completedToday: { type: integer }
+        totalDoctors: { type: integer }
+        totalPatients: { type: integer }
+    DayCount:
+      type: object
+      required: [date, count]
+      properties:
+        date: { type: string, format: date }
+        count: { type: integer }
+    LabelCount:
+      type: object
+      required: [label, count]
+      properties:
+        label: { type: string }
+        count: { type: integer }
+    DoctorUtilization:
+      type: object
+      required: [doctorId, doctorName, count]
+      properties:
+        doctorId: { type: integer }
+        doctorName: { type: string }
+        specialty: { type: string }
+        count: { type: integer }
