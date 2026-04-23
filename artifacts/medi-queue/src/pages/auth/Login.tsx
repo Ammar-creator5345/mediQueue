@@ -58,15 +58,6 @@ export function LoginPage() {
           New to MediQueue?{" "}
           <Link href="/signup" className="font-medium text-primary hover:underline">Create an account</Link>
         </p>
-        <div className="mt-4 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-          <p className="font-medium text-foreground">Demo accounts (password shown):</p>
-          <ul className="mt-1 space-y-0.5">
-            <li>patient@mediqueue.dev / patient123</li>
-            <li>aarav@mediqueue.dev / doctor123</li>
-            <li>reception@mediqueue.dev / reception123</li>
-            <li>admin@mediqueue.dev / admin123</li>
-          </ul>
-        </div>
       </Card>
     </div>
   );

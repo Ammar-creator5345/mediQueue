@@ -43,9 +43,6 @@ export function HomePage() {
                 <Button size="lg" variant="outline">Sign In</Button>
               </Link>
             </div>
-            <p className="mt-4 text-xs text-muted-foreground">
-              Try it instantly: <code className="rounded bg-muted px-1">patient@mediqueue.dev</code> / <code className="rounded bg-muted px-1">patient123</code>
-            </p>
           </motion.div>
         </div>
       </section>

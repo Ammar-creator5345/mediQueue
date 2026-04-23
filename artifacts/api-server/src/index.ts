@@ -1,7 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { connectDB } from "./config/db";
-import { seedIfEmpty } from "./services/seed";
 
 const rawPort = process.env["PORT"];
 if (!rawPort) {
@@ -14,7 +13,6 @@ if (Number.isNaN(port) || port <= 0) {
 
 async function main() {
   await connectDB();
-  await seedIfEmpty();
   app.listen(port, (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
