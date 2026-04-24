@@ -4,9 +4,9 @@ import { Appointment } from "../models/Appointment";
 import { Doctor } from "../models/Doctor";
 import { User } from "../models/User";
 import { QueueToken } from "../models/QueueToken";
-import { Notification } from "../models/Notification";
 import { CreateAppointmentSchema, UpdateAppointmentSchema } from "../validators";
 import { dayKeyFor, nextTokenNumber, genApptCode } from "../services/queueHelpers";
+import { notifyUser, notifyRoles } from "../services/notify";
 
 interface ApptJSON {
   id: string;
@@ -19,6 +19,7 @@ interface ApptJSON {
   scheduledAt: string;
   reason: string | null;
   status: string;
+  fee: number;
   createdAt: string;
 }
 
@@ -45,6 +46,7 @@ async function serialize(a: any): Promise<ApptJSON> {
     scheduledAt: a.scheduledAt.toISOString(),
     reason: a.reason ?? null,
     status: a.status,
+    fee: typeof a.fee === "number" ? a.fee : 0,
     createdAt: a.createdAt.toISOString(),
   };
 }
@@ -129,7 +131,7 @@ export async function createAppointment(req: Request, res: Response): Promise<vo
     return;
   }
 
-  const doctor = await Doctor.findById(data.doctorId);
+  const doctor = await Doctor.findById(data.doctorId).populate("user");
   if (!doctor) {
     res.status(404).json({ error: "Doctor not found" });
     return;
@@ -158,13 +160,20 @@ export async function createAppointment(req: Request, res: Response): Promise<vo
     scheduledAt,
     reason: data.reason ?? null,
     status: "scheduled",
+    fee: doctor.consultationFee ?? 0,
   });
 
-  await Notification.create({
-    user: new mongoose.Types.ObjectId(patientId),
-    title: "Appointment booked",
-    body: `Your appointment ${appt.code} is scheduled for ${scheduledAt.toLocaleString()}`,
-  });
+  const patientUser = await User.findById(patientId);
+  const doctorUser = doctor.user && typeof doctor.user === "object" && "name" in doctor.user
+    ? (doctor.user as any)
+    : await User.findById(doctor.user);
+  const whenStr = scheduledAt.toLocaleString();
+
+  await Promise.all([
+    notifyUser(patientId, "Appointment booked", `Your appointment ${appt.code} with ${doctorUser?.name ?? "the doctor"} is scheduled for ${whenStr}.`),
+    notifyUser(doctor.user, "New appointment assigned", `${patientUser?.name ?? "A patient"} booked appointment ${appt.code} for ${whenStr}.`),
+    notifyRoles(["receptionist", "admin"], "New appointment booked", `${patientUser?.name ?? "A patient"} → ${doctorUser?.name ?? "Doctor"} on ${whenStr} (${appt.code}).`),
+  ]);
 
   const populated = await Appointment.findById(appt._id)
     .populate({ path: "patient" })
@@ -230,7 +239,7 @@ export async function cancelAppointment(req: Request, res: Response): Promise<vo
     res.status(400).json({ error: "id required" });
     return;
   }
-  const existing = await Appointment.findById(id);
+  const existing = await Appointment.findById(id).populate({ path: "doctor", populate: { path: "user" } });
   if (!existing) {
     res.status(404).json({ error: "Appointment not found" });
     return;
@@ -241,6 +250,17 @@ export async function cancelAppointment(req: Request, res: Response): Promise<vo
     return;
   }
   await Appointment.findByIdAndUpdate(id, { status: "cancelled" });
+
+  const patientUser = await User.findById(existing.patient);
+  const doctorAny = existing.doctor as any;
+  const doctorUserId = doctorAny?.user?._id ?? doctorAny?.user;
+  const doctorName = doctorAny?.user?.name ?? "Doctor";
+  await Promise.all([
+    notifyUser(existing.patient, "Appointment cancelled", `Your appointment ${existing.code} was cancelled.`),
+    doctorUserId ? notifyUser(doctorUserId, "Appointment cancelled", `${patientUser?.name ?? "A patient"} cancelled appointment ${existing.code}.`) : Promise.resolve(),
+    notifyRoles(["receptionist", "admin"], "Appointment cancelled", `${patientUser?.name ?? "A patient"} cancelled appointment ${existing.code} with ${doctorName}.`),
+  ]);
+
   res.status(204).end();
 }
 
@@ -272,6 +292,8 @@ export async function checkInAppointment(req: Request, res: Response): Promise<v
   const dayKey = dayKeyFor(appt.doctor);
   const tokenNumber = await nextTokenNumber(dayKey);
   const patient = await User.findById(appt.patient);
+  const doctor = await Doctor.findById(appt.doctor).populate("user");
+  const docUser: any = doctor?.user;
 
   const token = await QueueToken.create({
     tokenNumber,
@@ -287,11 +309,11 @@ export async function checkInAppointment(req: Request, res: Response): Promise<v
   appt.status = "checked_in";
   await appt.save();
 
-  await Notification.create({
-    user: appt.patient,
-    title: `Token #${tokenNumber} issued`,
-    body: `You are checked in. Your token number is ${tokenNumber}.`,
-  });
+  await Promise.all([
+    notifyUser(appt.patient, `Token #${tokenNumber} issued`, `You are checked in. Your token number is ${tokenNumber}.`),
+    docUser?._id ? notifyUser(docUser._id, "Patient checked in", `${patient?.name ?? "A patient"} is in your queue with token #${tokenNumber}.`) : Promise.resolve(),
+    notifyRoles(["receptionist", "admin"], "Patient checked in", `${patient?.name ?? "Patient"} → ${docUser?.name ?? "Doctor"} (token #${tokenNumber}).`),
+  ]);
 
   const populated = await QueueToken.findById(token._id)
     .populate({ path: "patient" })

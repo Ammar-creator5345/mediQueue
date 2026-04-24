@@ -9,22 +9,24 @@ import {
   YAxis,
   Tooltip,
 } from "recharts";
-import { Stethoscope, Users, Calendar, ListOrdered, BarChart3 } from "lucide-react";
+import { Stethoscope, Users, Calendar, ListOrdered, BarChart3, Download } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
-import { StatCard, Card, CardHeader, CardTitle, CardBody, Spinner, EmptyState } from "@/components/Card";
+import { StatCard, Card, CardHeader, CardTitle, CardBody, Spinner, EmptyState, Badge } from "@/components/Card";
 import { Button } from "@/components/Button";
-import { getSummary, getAppointmentsPerDay } from "@/services/reports";
+import { getSummary, getAppointmentsPerDay, downloadAppointmentReceipt } from "@/services/reports";
 import { listAppointments } from "@/services/appointments";
 import { usePolling } from "@/hooks/usePolling";
 import type { Appointment, ReportSummary } from "@/services/types";
 import { formatDateTime, prettyStatus, statusColor } from "@/utils/format";
-import { Badge } from "@/components/Card";
+import { apiErrorMessage } from "@/services/api";
 
 export function AdminDashboard() {
   const { user } = useAuth();
   const [recent, setRecent] = useState<Appointment[]>([]);
   const [perDay, setPerDay] = useState<Array<{ date: string; count: number }> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([listAppointments(), getAppointmentsPerDay(7)])
@@ -36,6 +38,18 @@ export function AdminDashboard() {
   }, []);
 
   const { data: summary } = usePolling<ReportSummary>(() => getSummary(), 6000);
+
+  async function onDownload(id: string) {
+    setDownloading(id);
+    try {
+      await downloadAppointmentReceipt(id);
+      toast.success("Receipt downloaded");
+    } catch (e) {
+      toast.error(apiErrorMessage(e, "Could not download receipt"));
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -89,12 +103,26 @@ export function AdminDashboard() {
           ) : (
             <ul className="divide-y divide-border">
               {recent.map((a) => (
-                <li key={a.id} className="flex items-center justify-between py-3">
-                  <div>
-                    <p className="text-sm font-medium">{a.patientName} <span className="text-xs text-muted-foreground">→ {a.doctorName}</span></p>
-                    <p className="text-xs text-muted-foreground">{formatDateTime(a.scheduledAt)}</p>
+                <li key={a.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {a.patientName} <span className="text-xs text-muted-foreground">→ {a.doctorName}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDateTime(a.scheduledAt)} · {a.fee > 0 ? `₹${a.fee}` : "fee not set"}
+                    </p>
                   </div>
-                  <Badge className={statusColor(a.status)}>{prettyStatus(a.status)}</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className={statusColor(a.status)}>{prettyStatus(a.status)}</Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      loading={downloading === a.id}
+                      onClick={() => onDownload(a.id)}
+                    >
+                      <Download size={12} /> Receipt
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>

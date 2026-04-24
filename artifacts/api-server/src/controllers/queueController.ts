@@ -5,7 +5,7 @@ import { Doctor } from "../models/Doctor";
 import { User } from "../models/User";
 import { AddWalkInSchema, UpdateQueueTokenSchema } from "../validators";
 import { dayKeyFor, nextTokenNumber } from "../services/queueHelpers";
-import { Notification } from "../models/Notification";
+import { notifyUser, notifyRoles } from "../services/notify";
 
 async function serializeToken(t: any) {
   const doctor = t.doctor && typeof t.doctor === "object" && "specialty" in t.doctor
@@ -59,6 +59,7 @@ export async function listQueue(req: Request, res: Response): Promise<void> {
       res.json([]);
       return;
     }
+    // Doctor isolation: they can ONLY see their own queue regardless of any doctorId query
     filter["doctor"] = doc._id;
   } else if (u.role === "patient") {
     filter["patient"] = new mongoose.Types.ObjectId(u.id);
@@ -79,7 +80,7 @@ export async function addWalkIn(req: Request, res: Response): Promise<void> {
     return;
   }
   const data = parsed.data;
-  const doctor = await Doctor.findById(data.doctorId);
+  const doctor = await Doctor.findById(data.doctorId).populate("user");
   if (!doctor) {
     res.status(404).json({ error: "Doctor not found" });
     return;
@@ -96,6 +97,13 @@ export async function addWalkIn(req: Request, res: Response): Promise<void> {
     status: "waiting",
     dayKey,
   });
+
+  const docUser: any = doctor.user;
+  await Promise.all([
+    docUser?._id ? notifyUser(docUser._id, "Walk-in added to queue", `${data.patientName} is in your queue with token #${tokenNumber}.`) : Promise.resolve(),
+    notifyRoles(["admin"], "Walk-in registered", `${data.patientName} → ${docUser?.name ?? "Doctor"} (token #${tokenNumber}).`),
+  ]);
+
   const populated = await QueueToken.findById(token._id).populate({
     path: "doctor",
     populate: { path: "user" },
@@ -139,7 +147,13 @@ export async function updateQueueToken(req: Request, res: Response): Promise<voi
     if (parsed.data.status === "called") body = `You have been called. Please proceed to the consultation room.`;
     if (parsed.data.status === "in_progress") body = `Your consultation has started.`;
     if (parsed.data.status === "completed") body = `Your consultation is complete. Thank you.`;
-    await Notification.create({ user: t.patient, title, body });
+    await notifyUser(t.patient, title, body);
+  }
+
+  // Notify receptionists on completion/skip so they can keep flow moving
+  if (parsed.data.status === "completed" || parsed.data.status === "skipped") {
+    await notifyRoles(["receptionist"], "Queue update",
+      `Token #${t.tokenNumber} (${t.patientName}) marked ${parsed.data.status}.`);
   }
 
   res.json(await serializeToken(t));

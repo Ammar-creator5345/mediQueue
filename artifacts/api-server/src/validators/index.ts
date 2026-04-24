@@ -63,3 +63,7 @@ export const UpdateQueueTokenSchema = z.object({
   status: TokenStatusSchema,
   notes: z.string().nullish(),
 });
+
+export const UpdateDoctorFeeSchema = z.object({
+  consultationFee: z.number().min(0).max(1000000),
+});

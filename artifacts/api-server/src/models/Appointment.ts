@@ -15,6 +15,7 @@ export interface IAppointment extends Document {
   scheduledAt: Date;
   reason?: string | null;
   status: AppointmentStatus;
+  fee: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,6 +33,7 @@ const AppointmentSchema = new Schema<IAppointment>(
       default: "scheduled",
       index: true,
     },
+    fee: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 );

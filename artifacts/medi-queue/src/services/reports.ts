@@ -29,3 +29,16 @@ export async function getDoctorUtilization(): Promise<
   const { data } = await api.get("/reports/doctor-utilization");
   return data;
 }
+
+export async function downloadAppointmentReceipt(appointmentId: string): Promise<void> {
+  const res = await api.get(`/reports/receipt/${appointmentId}`, { responseType: "blob" });
+  const blob = res.data as Blob;
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `receipt-${appointmentId}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}

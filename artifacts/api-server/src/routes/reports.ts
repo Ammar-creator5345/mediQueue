@@ -6,6 +6,7 @@ import {
   getQueueStatusReport,
   getDoctorUtilization,
 } from "../controllers/reportController";
+import { downloadAppointmentReceipt } from "../controllers/receiptController";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -17,5 +18,6 @@ router.get("/reports/appointments-per-day", requireAuth, staff, getAppointmentsP
 router.get("/reports/status-distribution", requireAuth, staff, getStatusDistribution);
 router.get("/reports/queue-status", requireAuth, staff, getQueueStatusReport);
 router.get("/reports/doctor-utilization", requireAuth, staff, getDoctorUtilization);
+router.get("/reports/receipt/:appointmentId", requireAuth, requireRole("admin"), downloadAppointmentReceipt);
 
 export default router;

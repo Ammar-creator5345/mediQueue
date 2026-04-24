@@ -6,6 +6,7 @@ import { Patient } from "../models/Patient";
 import { signToken } from "../middlewares/auth";
 import { SignupSchema, LoginSchema, ContactSchema } from "../validators";
 import { Contact } from "../models/Contact";
+import { notifyRoles } from "../services/notify";
 
 export async function signup(req: Request, res: Response): Promise<void> {
   const parsed = SignupSchema.safeParse(req.body);
@@ -33,11 +34,17 @@ export async function signup(req: Request, res: Response): Promise<void> {
       user: user._id,
       specialty: data.specialty || "General Medicine",
       consultationMinutes: 20,
+      consultationFee: 0,
       startTime: "09:00",
       endTime: "17:00",
     });
+    await notifyRoles(["admin"], "New doctor registered", `Dr. ${user.name} (${data.specialty || "General Medicine"}) has joined.`);
   } else if (data.role === "patient") {
     await Patient.create({ user: user._id });
+  } else if (data.role === "receptionist") {
+    await notifyRoles(["admin"], "New receptionist registered", `${user.name} has joined the front desk.`);
+  } else if (data.role === "admin") {
+    await notifyRoles(["admin"], "New admin added", `${user.name} now has admin access.`);
   }
 
   const token = signToken({
@@ -93,6 +100,7 @@ export async function submitContact(req: Request, res: Response): Promise<void> 
     res.status(400).json({ error: "Validation error", issues: parsed.error.issues });
     return;
   }
-  await Contact.create(parsed.data);
+  const c = await Contact.create(parsed.data);
+  await notifyRoles(["admin"], "New contact message", `${c.name} (${c.email}): ${c.message.slice(0, 80)}`);
   res.status(201).json({ ok: true });
 }

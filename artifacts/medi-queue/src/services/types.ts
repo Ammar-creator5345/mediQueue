@@ -17,6 +17,7 @@ export interface Doctor {
   specialty: string;
   bio: string | null;
   consultationMinutes: number;
+  consultationFee: number;
   startTime: string;
   endTime: string;
   createdAt: string;
@@ -40,6 +41,7 @@ export interface Appointment {
   scheduledAt: string;
   reason: string | null;
   status: AppointmentStatus;
+  fee: number;
   createdAt: string;
 }
 

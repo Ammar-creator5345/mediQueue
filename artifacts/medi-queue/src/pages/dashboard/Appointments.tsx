@@ -171,6 +171,7 @@ export function AppointmentsPage() {
                 {doctors.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name} — {d.specialty}
+                    {d.consultationFee > 0 ? ` · ₹${d.consultationFee}` : ""}
                   </option>
                 ))}
               </Select>
@@ -232,6 +233,7 @@ export function AppointmentsPage() {
                     <th className="py-2 pr-4">{user!.role === "patient" ? "Doctor" : "Patient"}</th>
                     <th className="py-2 pr-4">Specialty</th>
                     <th className="py-2 pr-4">When</th>
+                    <th className="py-2 pr-4">Fee</th>
                     <th className="py-2 pr-4">Status</th>
                     <th className="py-2 pr-4 text-right">Actions</th>
                   </tr>
@@ -246,6 +248,7 @@ export function AppointmentsPage() {
                         <Calendar size={12} className="mr-1 inline-block text-muted-foreground" />
                         {formatDateTime(a.scheduledAt)}
                       </td>
+                      <td className="py-3 pr-4 font-medium">{a.fee > 0 ? `₹${a.fee}` : "—"}</td>
                       <td className="py-3 pr-4">
                         <Badge className={statusColor(a.status)}>{prettyStatus(a.status)}</Badge>
                       </td>

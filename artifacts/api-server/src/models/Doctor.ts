@@ -6,6 +6,7 @@ export interface IDoctor extends Document {
   specialty: string;
   bio?: string | null;
   consultationMinutes: number;
+  consultationFee: number;
   startTime: string; // "09:00"
   endTime: string;   // "17:00"
   createdAt: Date;
@@ -18,6 +19,7 @@ const DoctorSchema = new Schema<IDoctor>(
     specialty: { type: String, required: true, trim: true },
     bio: { type: String, default: null },
     consultationMinutes: { type: Number, default: 20, min: 5, max: 240 },
+    consultationFee: { type: Number, default: 0, min: 0 },
     startTime: { type: String, default: "09:00" },
     endTime: { type: String, default: "17:00" },
   },
