@@ -17,17 +17,19 @@ interface Item {
   href: string;
   label: string;
   icon: LucideIcon;
-  roles?: UserRole[];
+  roles: UserRole[];
 }
 
+const ALL: UserRole[] = ["patient", "doctor", "receptionist", "admin"];
+
 const items: Item[] = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/dashboard/appointments", label: "Appointments", icon: Calendar },
-  { href: "/dashboard/queue", label: "Live Queue", icon: ListOrdered },
-  { href: "/dashboard/doctors", label: "Doctors", icon: Stethoscope, roles: ["receptionist", "admin", "patient"] },
-  { href: "/dashboard/patients", label: "Patients", icon: Users, roles: ["receptionist", "admin", "doctor"] },
-  { href: "/dashboard/reports", label: "Reports", icon: BarChart3, roles: ["doctor", "receptionist", "admin"] },
-  { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
+  { href: "/dashboard", label: "Overview", icon: LayoutDashboard, roles: ALL },
+  { href: "/dashboard/appointments", label: "Appointments", icon: Calendar, roles: ALL },
+  { href: "/dashboard/queue", label: "Live Queue", icon: ListOrdered, roles: ["doctor", "receptionist", "admin"] },
+  { href: "/dashboard/doctors", label: "Doctors", icon: Stethoscope, roles: ["patient", "receptionist", "admin"] },
+  { href: "/dashboard/patients", label: "Patients", icon: Users, roles: ["doctor", "receptionist", "admin"] },
+  { href: "/dashboard/reports", label: "Reports", icon: BarChart3, roles: ["admin"] },
+  { href: "/dashboard/notifications", label: "Notifications", icon: Bell, roles: ALL },
 ];
 
 export function Sidebar() {
@@ -38,9 +40,13 @@ export function Sidebar() {
   return (
     <aside className="hidden w-60 shrink-0 border-r border-border bg-card lg:block">
       <div className="flex h-full flex-col p-3">
+        <div className="mb-3 rounded-md bg-muted px-3 py-2">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Signed in as</p>
+          <p className="text-sm font-medium capitalize">{role}</p>
+        </div>
         <nav className="flex-1 space-y-1">
           {items
-            .filter((it) => !it.roles || it.roles.includes(role))
+            .filter((it) => it.roles.includes(role))
             .map((it) => {
               const Icon = it.icon;
               const active = location === it.href || (it.href !== "/dashboard" && location.startsWith(it.href));

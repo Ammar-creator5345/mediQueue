@@ -1,0 +1,175 @@
+The current system is BROKEN and NOT following requirements.
+
+You must FIX the existing project. Do NOT rebuild from scratch.
+
+--------------------------------------------------
+
+🚨 CRITICAL ISSUES TO FIX
+
+1. ROLE-BASED ACCESS IS BROKEN
+- All users are getting same dashboard
+- Patients can access admin features
+
+✅ FIX THIS:
+
+- Implement strict Role-Based Access Control (RBAC)
+- Roles:
+  - patient
+  - doctor
+  - receptionist
+  - admin
+
+BACKEND:
+- Add role field in User model
+- Create middleware:
+  - verifyJWT
+  - checkRole(role)
+
+- Protect routes like:
+  - /api/admin → admin only
+  - /api/queue → receptionist + doctor
+  - /api/appointments → patient-specific
+
+FRONTEND:
+- Decode JWT
+- Store user role in context
+- Show routes based on role
+
+- Sidebar must be dynamic:
+  - Patient sees ONLY patient routes
+  - Admin sees ONLY admin routes
+
+--------------------------------------------------
+
+2. DASHBOARD ISSUE
+
+- All roles are seeing same dashboard
+
+✅ FIX:
+- Create separate dashboards:
+  - PatientDashboard
+  - DoctorDashboard
+  - ReceptionistDashboard
+  - AdminDashboard
+
+- Route based on role after login
+
+--------------------------------------------------
+
+3. QUEUE SYSTEM NOT WORKING
+
+Current issue:
+- Token generation not working
+- Queue not updating
+- No real flow
+
+✅ FIX FULL FLOW:
+
+Patient:
+- Book appointment → saved in DB
+
+Receptionist:
+- Check-in → API call → create token in DB
+
+Queue Model:
+- tokenNumber
+- patientId
+- doctorId
+- status (waiting, in-progress, completed)
+- priority
+
+Doctor:
+- Fetch queue from DB
+- Update status
+
+Frontend:
+- Fetch queue using API
+- Update UI every 3–5 seconds (polling)
+
+--------------------------------------------------
+
+4. NOTIFICATIONS NOT WORKING
+
+Current issue:
+- No notifications shown
+
+✅ FIX:
+
+Backend:
+- Create Notification model:
+  - userId
+  - message
+  - type
+  - read status
+
+- Trigger notifications on:
+  - appointment booking
+  - queue update
+  - doctor delay
+
+Frontend:
+- Fetch notifications from API
+- Show in notification panel
+- Mark as read
+
+--------------------------------------------------
+
+5. REMOVE STATIC DATA
+
+- Remove ALL hardcoded data
+- Replace with API calls
+
+--------------------------------------------------
+
+6. CONNECT EVERYTHING
+
+- Ensure:
+  Frontend → Axios → API → MongoDB
+
+- Fix all broken API calls
+- Ensure correct endpoints
+
+--------------------------------------------------
+
+7. VALIDATION
+
+- Use Zod in backend
+- Use Yup in frontend
+
+--------------------------------------------------
+
+8. FINAL SYSTEM FLOW (MUST WORK)
+
+Signup → Login → Role-based dashboard
+
+PATIENT:
+- Book appointment
+- View appointments
+- See queue
+
+RECEPTIONIST:
+- Check-in patient
+- Manage queue
+
+DOCTOR:
+- View queue
+- Update consultation
+
+ADMIN:
+- Manage users
+- View reports
+
+Queue Flow:
+Appointment → Check-in → Token → Queue → Call → Complete
+
+--------------------------------------------------
+
+🚀 FINAL TASK
+
+- Fix ALL above issues in existing code
+- Do NOT leave anything broken
+- Ensure system is fully working end-to-end
+
+Do NOT ask questions.
+Start fixing immediately.
+Continue until everything works correctly.

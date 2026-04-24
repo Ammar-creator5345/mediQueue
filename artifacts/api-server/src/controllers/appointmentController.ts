@@ -172,6 +172,21 @@ export async function createAppointment(req: Request, res: Response): Promise<vo
   res.status(201).json(await serialize(populated));
 }
 
+async function ensureCanModify(req: Request, appt: { patient: mongoose.Types.ObjectId; doctor: mongoose.Types.ObjectId }): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const u = req.user!;
+  if (u.role === "admin" || u.role === "receptionist") return { ok: true };
+  if (u.role === "patient") {
+    if (appt.patient.toString() === u.id) return { ok: true };
+    return { ok: false, status: 403, error: "You can only modify your own appointments" };
+  }
+  if (u.role === "doctor") {
+    const doc = await Doctor.findOne({ user: new mongoose.Types.ObjectId(u.id) });
+    if (doc && appt.doctor.toString() === doc._id.toString()) return { ok: true };
+    return { ok: false, status: 403, error: "You can only modify appointments assigned to you" };
+  }
+  return { ok: false, status: 403, error: "Forbidden" };
+}
+
 export async function updateAppointment(req: Request, res: Response): Promise<void> {
   const id = req.params["id"];
   if (!id) {
@@ -183,6 +198,17 @@ export async function updateAppointment(req: Request, res: Response): Promise<vo
     res.status(400).json({ error: "Validation error", issues: parsed.error.issues });
     return;
   }
+  const existing = await Appointment.findById(id);
+  if (!existing) {
+    res.status(404).json({ error: "Appointment not found" });
+    return;
+  }
+  const guard = await ensureCanModify(req, existing);
+  if (!guard.ok) {
+    res.status(guard.status).json({ error: guard.error });
+    return;
+  }
+
   const update: Record<string, unknown> = {};
   if (parsed.data.status) update["status"] = parsed.data.status;
   if (parsed.data.reason !== undefined) update["reason"] = parsed.data.reason;
@@ -204,11 +230,17 @@ export async function cancelAppointment(req: Request, res: Response): Promise<vo
     res.status(400).json({ error: "id required" });
     return;
   }
-  const a = await Appointment.findByIdAndUpdate(id, { status: "cancelled" }, { new: true });
-  if (!a) {
+  const existing = await Appointment.findById(id);
+  if (!existing) {
     res.status(404).json({ error: "Appointment not found" });
     return;
   }
+  const guard = await ensureCanModify(req, existing);
+  if (!guard.ok) {
+    res.status(guard.status).json({ error: guard.error });
+    return;
+  }
+  await Appointment.findByIdAndUpdate(id, { status: "cancelled" });
   res.status(204).end();
 }
 

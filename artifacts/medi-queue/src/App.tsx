@@ -26,15 +26,23 @@ function DashboardSwitch() {
         <Switch>
           <Route path="/dashboard" component={DashboardHome} />
           <Route path="/dashboard/appointments" component={AppointmentsPage} />
-          <Route path="/dashboard/queue" component={QueuePage} />
-          <Route path="/dashboard/doctors" component={DoctorsPage} />
+          <Route path="/dashboard/queue">
+            <ProtectedRoute roles={["doctor", "receptionist", "admin"]}>
+              <QueuePage />
+            </ProtectedRoute>
+          </Route>
+          <Route path="/dashboard/doctors">
+            <ProtectedRoute roles={["patient", "receptionist", "admin"]}>
+              <DoctorsPage />
+            </ProtectedRoute>
+          </Route>
           <Route path="/dashboard/patients">
             <ProtectedRoute roles={["doctor", "receptionist", "admin"]}>
               <PatientsPage />
             </ProtectedRoute>
           </Route>
           <Route path="/dashboard/reports">
-            <ProtectedRoute roles={["doctor", "receptionist", "admin"]}>
+            <ProtectedRoute roles={["admin"]}>
               <ReportsPage />
             </ProtectedRoute>
           </Route>
