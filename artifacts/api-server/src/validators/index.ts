@@ -64,6 +64,10 @@ export const UpdateQueueTokenSchema = z.object({
   notes: z.string().nullish(),
 });
 
-export const UpdateDoctorFeeSchema = z.object({
-  consultationFee: z.number().min(0).max(1000000),
+export const UpdateDoctorProfileSchema = z.object({
+  name: z.string().min(2).max(120).optional(),
+  specialty: z.string().min(2).max(120).optional(),
+  consultationFee: z.number().min(0).max(1000000).optional(),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM").optional(),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM").optional(),
 });

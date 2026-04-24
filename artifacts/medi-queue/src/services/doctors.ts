@@ -16,8 +16,16 @@ export async function getMyDoctorProfile(): Promise<Doctor> {
   return data;
 }
 
-export async function updateDoctorFee(id: string, consultationFee: number): Promise<Doctor> {
-  const { data } = await api.put<Doctor>(`/doctors/${id}/fee`, { consultationFee });
+export interface UpdateDoctorProfilePayload {
+  name?: string;
+  specialty?: string;
+  consultationFee?: number;
+  startTime?: string;
+  endTime?: string;
+}
+
+export async function updateMyDoctorProfile(payload: UpdateDoctorProfilePayload): Promise<Doctor> {
+  const { data } = await api.put<Doctor>("/doctors/profile", payload);
   return data;
 }
 

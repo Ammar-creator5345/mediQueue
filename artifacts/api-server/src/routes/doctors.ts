@@ -4,7 +4,7 @@ import {
   getDoctor,
   listDoctorSlots,
   getMyDoctorProfile,
-  updateDoctorFee,
+  updateMyDoctorProfile,
 } from "../controllers/doctorController";
 import { requireAuth, requireRole } from "../middlewares/auth";
 
@@ -12,8 +12,8 @@ const router: IRouter = Router();
 
 router.get("/doctors", requireAuth, listDoctors);
 router.get("/doctors/me", requireAuth, requireRole("doctor"), getMyDoctorProfile);
+router.put("/doctors/profile", requireAuth, requireRole("doctor"), updateMyDoctorProfile);
 router.get("/doctors/:id", requireAuth, getDoctor);
 router.get("/doctors/:id/slots", requireAuth, listDoctorSlots);
-router.put("/doctors/:id/fee", requireAuth, requireRole("doctor", "admin"), updateDoctorFee);
 
 export default router;

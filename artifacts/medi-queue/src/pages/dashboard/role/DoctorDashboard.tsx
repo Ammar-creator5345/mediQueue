@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { Activity, ListOrdered, CheckCircle2, Calendar, Phone, PlayCircle, IndianRupee, Save } from "lucide-react";
+import { Activity, ListOrdered, CheckCircle2, Calendar, Phone, PlayCircle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { StatCard, Card, CardHeader, CardTitle, CardBody, EmptyState, Spinner, Badge } from "@/components/Card";
 import { Button } from "@/components/Button";
-import { Input } from "@/components/Input";
 import { listAppointments } from "@/services/appointments";
 import { listQueue, updateQueueToken } from "@/services/queue";
-import { getMyDoctorProfile, updateDoctorFee } from "@/services/doctors";
 import { usePolling } from "@/hooks/usePolling";
-import type { Appointment, Doctor, QueueToken } from "@/services/types";
+import type { Appointment, QueueToken } from "@/services/types";
 import { formatTime, prettyStatus, statusColor } from "@/utils/format";
 import { apiErrorMessage } from "@/services/api";
 import { toast } from "sonner";
@@ -18,16 +16,9 @@ export function DoctorDashboard() {
   const { user } = useAuth();
   const [appts, setAppts] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<Doctor | null>(null);
-  const [feeDraft, setFeeDraft] = useState<string>("");
-  const [savingFee, setSavingFee] = useState(false);
 
   useEffect(() => {
     listAppointments().then(setAppts).finally(() => setLoading(false));
-    getMyDoctorProfile().then((p) => {
-      setProfile(p);
-      setFeeDraft(String(p.consultationFee));
-    }).catch(() => undefined);
   }, []);
 
   const { data: queue, refresh } = usePolling<QueueToken[]>(() => listQueue(), 4000);
@@ -50,26 +41,6 @@ export function DoctorDashboard() {
     }
   }
 
-  async function onSaveFee() {
-    if (!profile) return;
-    const parsed = Number(feeDraft);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      toast.error("Enter a valid fee");
-      return;
-    }
-    setSavingFee(true);
-    try {
-      const updated = await updateDoctorFee(profile.id, parsed);
-      setProfile(updated);
-      setFeeDraft(String(updated.consultationFee));
-      toast.success("Consultation fee updated");
-    } catch (e) {
-      toast.error(apiErrorMessage(e, "Could not update fee"));
-    } finally {
-      setSavingFee(false);
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div>
@@ -83,43 +54,6 @@ export function DoctorDashboard() {
         <StatCard label="In consultation" value={inProgress.length} icon={<Activity size={18} />} />
         <StatCard label="Completed today" value={completedToday} icon={<CheckCircle2 size={18} />} />
       </div>
-
-      {profile ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>My consultation fee</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <p className="text-xs text-muted-foreground">Specialty</p>
-                <p className="font-medium">{profile.specialty}</p>
-                <p className="mt-2 text-xs text-muted-foreground">Current fee</p>
-                <p className="flex items-center gap-1 text-2xl font-bold text-primary">
-                  <IndianRupee size={18} />
-                  {profile.consultationFee > 0 ? profile.consultationFee : "—"}
-                </p>
-              </div>
-              <div className="flex items-end gap-2">
-                <Input
-                  label="Update fee (₹)"
-                  type="number"
-                  min={0}
-                  step={50}
-                  value={feeDraft}
-                  onChange={(e) => setFeeDraft(e.target.value)}
-                />
-                <Button onClick={onSaveFee} loading={savingFee}>
-                  <Save size={14} /> Save
-                </Button>
-              </div>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              New bookings will use this fee. Existing appointments keep the fee that was active when they were booked.
-            </p>
-          </CardBody>
-        </Card>
-      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

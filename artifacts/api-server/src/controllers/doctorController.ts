@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import { Doctor } from "../models/Doctor";
 import { User } from "../models/User";
 import { Appointment } from "../models/Appointment";
-import { UpdateDoctorFeeSchema } from "../validators";
+import { UpdateDoctorProfileSchema } from "../validators";
 import { notifyRoles, notifyUser } from "../services/notify";
 
 interface DoctorJSON {
@@ -62,6 +62,59 @@ export async function getMyDoctorProfile(req: Request, res: Response): Promise<v
   res.json(await serializeDoctor(d));
 }
 
+export async function updateMyDoctorProfile(req: Request, res: Response): Promise<void> {
+  const u = req.user!;
+  if (u.role !== "doctor") {
+    res.status(403).json({ error: "Only doctors can update their profile" });
+    return;
+  }
+  const parsed = UpdateDoctorProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Validation error", issues: parsed.error.issues });
+    return;
+  }
+  const d = await Doctor.findOne({ user: new mongoose.Types.ObjectId(u.id) });
+  if (!d) {
+    res.status(404).json({ error: "Doctor profile not found" });
+    return;
+  }
+
+  const data = parsed.data;
+  if (data.startTime && data.endTime && data.startTime >= data.endTime) {
+    res.status(400).json({ error: "Start time must be before end time" });
+    return;
+  }
+  if (data.startTime && !data.endTime && data.startTime >= d.endTime) {
+    res.status(400).json({ error: "Start time must be before current end time" });
+    return;
+  }
+  if (data.endTime && !data.startTime && d.startTime >= data.endTime) {
+    res.status(400).json({ error: "End time must be after current start time" });
+    return;
+  }
+
+  const feeChanged = data.consultationFee !== undefined && data.consultationFee !== d.consultationFee;
+
+  if (data.specialty !== undefined) d.specialty = data.specialty;
+  if (data.consultationFee !== undefined) d.consultationFee = data.consultationFee;
+  if (data.startTime !== undefined) d.startTime = data.startTime;
+  if (data.endTime !== undefined) d.endTime = data.endTime;
+  await d.save();
+
+  if (data.name) {
+    await User.findByIdAndUpdate(d.user, { name: data.name });
+  }
+
+  await notifyUser(d.user, "Profile updated", "Your doctor profile has been updated successfully.");
+  if (feeChanged) {
+    const ownerName = (await User.findById(d.user))?.name ?? "Doctor";
+    await notifyRoles(["admin"], "Doctor fee updated", `${ownerName}'s consultation fee is now ₹${data.consultationFee}.`);
+  }
+
+  const populated = await Doctor.findById(d._id).populate("user");
+  res.json(await serializeDoctor(populated));
+}
+
 export async function getDoctor(req: Request, res: Response): Promise<void> {
   const id = req.params["id"];
   if (!id) {
@@ -74,41 +127,6 @@ export async function getDoctor(req: Request, res: Response): Promise<void> {
     return;
   }
   res.json(await serializeDoctor(d));
-}
-
-export async function updateDoctorFee(req: Request, res: Response): Promise<void> {
-  const id = req.params["id"];
-  if (!id) {
-    res.status(400).json({ error: "Doctor id required" });
-    return;
-  }
-  const parsed = UpdateDoctorFeeSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Validation error", issues: parsed.error.issues });
-    return;
-  }
-  const d = await Doctor.findById(id);
-  if (!d) {
-    res.status(404).json({ error: "Doctor not found" });
-    return;
-  }
-  const u = req.user!;
-  if (u.role !== "admin") {
-    if (u.role !== "doctor" || d.user.toString() !== u.id) {
-      res.status(403).json({ error: "Only the owning doctor or an admin can update this fee" });
-      return;
-    }
-  }
-
-  d.consultationFee = parsed.data.consultationFee;
-  await d.save();
-  const populated = await Doctor.findById(d._id).populate("user");
-
-  const ownerName = (await User.findById(d.user))?.name ?? "Doctor";
-  await notifyUser(d.user, "Consultation fee updated", `Your fee is now ₹${parsed.data.consultationFee}.`);
-  await notifyRoles(["admin"], "Doctor fee updated", `${ownerName}'s consultation fee is now ₹${parsed.data.consultationFee}.`);
-
-  res.json(await serializeDoctor(populated));
 }
 
 function timeToMinutes(t: string): number {

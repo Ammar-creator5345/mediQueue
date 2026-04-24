@@ -8,6 +8,7 @@ import {
   BarChart3,
   Bell,
   Stethoscope,
+  UserCog,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -29,6 +30,7 @@ const items: Item[] = [
   { href: "/dashboard/doctors", label: "Doctors", icon: Stethoscope, roles: ["patient", "receptionist", "admin"] },
   { href: "/dashboard/patients", label: "Patients", icon: Users, roles: ["doctor", "receptionist", "admin"] },
   { href: "/dashboard/reports", label: "Reports", icon: BarChart3, roles: ["admin"] },
+  { href: "/dashboard/profile", label: "Profile", icon: UserCog, roles: ["doctor"] },
   { href: "/dashboard/notifications", label: "Notifications", icon: Bell, roles: ALL },
 ];
 

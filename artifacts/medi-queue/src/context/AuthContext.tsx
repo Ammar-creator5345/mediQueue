@@ -9,6 +9,7 @@ interface AuthCtx {
   login: (email: string, password: string) => Promise<User>;
   signup: (payload: SignupPayload) => Promise<User>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthCtx | null>(null);
@@ -50,7 +51,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
-  return <Ctx.Provider value={{ user, loading, login, signup, logout }}>{children}</Ctx.Provider>;
+  async function refreshUser(): Promise<void> {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    try {
+      const u = await fetchMe();
+      setUser(u);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return (
+    <Ctx.Provider value={{ user, loading, login, signup, logout, refreshUser }}>
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export function useAuth(): AuthCtx {

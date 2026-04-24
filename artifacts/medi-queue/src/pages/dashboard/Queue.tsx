@@ -34,6 +34,7 @@ export function QueuePage() {
   const role = user!.role;
   const canManage = role === "doctor" || role === "receptionist" || role === "admin";
   const canAddWalkIn = role === "receptionist" || role === "admin";
+  const canFilterByDoctor = role === "receptionist" || role === "admin";
 
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [filterDoctor, setFilterDoctor] = useState<string>("");
@@ -48,13 +49,13 @@ export function QueuePage() {
   } = useForm<WalkInForm>({ resolver: yupResolver(walkInSchema) });
 
   useEffect(() => {
-    if (role !== "patient") {
+    if (canFilterByDoctor || canAddWalkIn) {
       listDoctors().then(setDoctors).catch(() => undefined);
     }
-  }, [role]);
+  }, [canFilterByDoctor, canAddWalkIn]);
 
   const { data, refresh } = usePolling<QueueToken[]>(
-    () => listQueue(filterDoctor ? { doctorId: filterDoctor } : {}),
+    () => listQueue(canFilterByDoctor && filterDoctor ? { doctorId: filterDoctor } : {}),
     4000
   );
 
@@ -85,7 +86,11 @@ export function QueuePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Live Queue</h1>
-          <p className="text-sm text-muted-foreground">Updates automatically every few seconds.</p>
+          <p className="text-sm text-muted-foreground">
+            {role === "doctor"
+              ? "Your queue updates automatically every few seconds."
+              : "Updates automatically every few seconds."}
+          </p>
         </div>
         {canAddWalkIn ? (
           <Button onClick={() => setShowForm((v) => !v)}>
@@ -98,7 +103,7 @@ export function QueuePage() {
         <div className="rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
       ) : null}
 
-      {role !== "patient" ? (
+      {canFilterByDoctor ? (
         <Card>
           <CardBody className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
@@ -113,6 +118,14 @@ export function QueuePage() {
             </div>
             <div className="text-sm text-muted-foreground">
               {data ? `${data.length} token${data.length === 1 ? "" : "s"} in queue today` : "Loading queue..."}
+            </div>
+          </CardBody>
+        </Card>
+      ) : role === "doctor" && data ? (
+        <Card>
+          <CardBody>
+            <div className="text-sm text-muted-foreground">
+              {data.length} token{data.length === 1 ? "" : "s"} in your queue today
             </div>
           </CardBody>
         </Card>

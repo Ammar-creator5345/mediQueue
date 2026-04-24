@@ -17,6 +17,7 @@ import { QueuePage } from "@/pages/dashboard/Queue";
 import { DoctorsPage } from "@/pages/dashboard/Doctors";
 import { PatientsPage } from "@/pages/dashboard/Patients";
 import { ReportsPage } from "@/pages/dashboard/Reports";
+import { DoctorProfilePage } from "@/pages/dashboard/DoctorProfile";
 import { NotificationsPage } from "@/pages/dashboard/Notifications";
 
 function DashboardSwitch() {
@@ -44,6 +45,11 @@ function DashboardSwitch() {
           <Route path="/dashboard/reports">
             <ProtectedRoute roles={["admin"]}>
               <ReportsPage />
+            </ProtectedRoute>
+          </Route>
+          <Route path="/dashboard/profile">
+            <ProtectedRoute roles={["doctor"]}>
+              <DoctorProfilePage />
             </ProtectedRoute>
           </Route>
           <Route path="/dashboard/notifications" component={NotificationsPage} />
