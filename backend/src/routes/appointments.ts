@@ -16,6 +16,6 @@ router.post("/appointments", requireAuth, requireRole("patient", "receptionist",
 router.get("/appointments/:id", requireAuth, getAppointment);
 router.patch("/appointments/:id", requireAuth, updateAppointment);
 router.delete("/appointments/:id", requireAuth, cancelAppointment);
-router.post("/appointments/:id/check-in", requireAuth, checkInAppointment);
+router.post("/appointments/:id/check-in", requireAuth, requireRole("receptionist"), checkInAppointment);
 
 export default router;

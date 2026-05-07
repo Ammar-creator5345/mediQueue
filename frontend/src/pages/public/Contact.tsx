@@ -11,16 +11,19 @@ import { submitContact } from "@/services/auth";
 import { apiErrorMessage } from "@/services/api";
 
 interface FormValues {
-  name: string;
-  email: string;
-  message: string;
+  name?: string;
+  email?: string;
+  message?: string;
 }
 
-const schema = yup.object({
-  name: yup.string().required("Name is required").min(2, "Too short"),
-  email: yup.string().required("Email is required").email("Invalid email"),
-  message: yup.string().required("Message is required").min(5, "Please write a few more characters"),
-});
+const schema: yup.ObjectSchema<FormValues> = yup
+  .object({
+    name: yup.string().defined().required("Name is required").min(2, "Too short"),
+    email: yup.string().defined().required("Email is required").email("Invalid email"),
+    message: yup.string().defined().required("Message is required").min(5, "Please write a few more characters"),
+  })
+  .required()
+  .defined();
 
 export function ContactPage() {
   const [done, setDone] = useState(false);
@@ -30,12 +33,19 @@ export function ContactPage() {
     handleSubmit,
     formState: { errors, isSubmitting },
     reset,
-  } = useForm<FormValues>({ resolver: yupResolver(schema) });
+  } = useForm<FormValues>({
+    resolver: yupResolver<FormValues>(schema),
+    defaultValues: { name: "", email: "", message: "" },
+  });
 
   async function onSubmit(values: FormValues) {
     setError(null);
     try {
-      await submitContact(values);
+      await submitContact({
+        name: values.name!,
+        email: values.email!,
+        message: values.message!,
+      });
       setDone(true);
       reset();
     } catch (e) {
@@ -70,7 +80,7 @@ export function ContactPage() {
                 <MapPin className="text-primary" size={18} />
                 <div>
                   <p className="text-sm font-semibold">Office</p>
-                  <p className="text-sm text-muted-foreground">221B Wellness Ave, Suite 5, Bengaluru</p>
+                  <p className="text-sm text-muted-foreground">Satellite Town,Bahawalpur</p>
                 </div>
               </div>
             </div>

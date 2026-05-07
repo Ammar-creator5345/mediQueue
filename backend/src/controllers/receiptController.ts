@@ -1,9 +1,9 @@
 import type { Request, Response } from "express";
 import PDFDocument from "pdfkit";
-import { Appointment } from "../models/Appointment";
-import { Doctor } from "../models/Doctor";
-import { User } from "../models/User";
-import { QueueToken } from "../models/QueueToken";
+import { findAppointmentById } from "../repo/appointments";
+import { findDoctorWithUserById } from "../repo/doctors";
+import { findUserById } from "../repo/users";
+import { findQueueTokenByAppointment } from "../repo/queueTokens";
 
 function fmtDate(d: Date): string {
   return d.toLocaleString("en-IN", {
@@ -17,32 +17,22 @@ function fmtDate(d: Date): string {
 }
 
 export async function downloadAppointmentReceipt(req: Request, res: Response): Promise<void> {
-  const id = req.params["appointmentId"];
+  const id = String(req.params["appointmentId"] ?? "");
   if (!id) {
     res.status(400).json({ error: "appointmentId required" });
     return;
   }
-  const appt = await Appointment.findById(id)
-    .populate({ path: "patient" })
-    .populate({ path: "doctor", populate: { path: "user" } });
+  const appt = await findAppointmentById(id);
   if (!appt) {
     res.status(404).json({ error: "Appointment not found" });
     return;
   }
 
-  const patient: any = appt.patient && typeof appt.patient === "object" && "name" in appt.patient
-    ? appt.patient
-    : await User.findById(appt.patient);
-  const doctor: any = appt.doctor && typeof appt.doctor === "object" && "specialty" in appt.doctor
-    ? appt.doctor
-    : await Doctor.findById(appt.doctor).populate("user");
-  const doctorUser: any = doctor?.user && typeof doctor.user === "object" && "name" in doctor.user
-    ? doctor.user
-    : doctor?.user
-    ? await User.findById(doctor.user)
-    : null;
+  const patient: any = await findUserById(appt.patient_id);
+  const doctor: any = await findDoctorWithUserById(appt.doctor_id);
+  const doctorUser: any = doctor ? { name: doctor.user_name } : null;
 
-  const token = await QueueToken.findOne({ appointment: appt._id });
+  const token = await findQueueTokenByAppointment(appt.id);
 
   const filename = `receipt-${appt.code}.pdf`;
   res.setHeader("Content-Type", "application/pdf");
@@ -72,8 +62,8 @@ export async function downloadAppointmentReceipt(req: Request, res: Response): P
     ["Patient Email", patient?.email ?? "—"],
     ["Doctor Name", doctorUser?.name ? `Dr. ${doctorUser.name}` : "—"],
     ["Specialty", doctor?.specialty ?? "—"],
-    ["Appointment Date", fmtDate(appt.scheduledAt)],
-    ["Token Number", token ? `#${token.tokenNumber}` : "Not yet checked-in"],
+    ["Appointment Date", fmtDate(appt.scheduled_at)],
+    ["Token Number", token ? `#${token.token_number}` : "Not yet checked-in"],
     ["Status", appt.status.replace(/_/g, " ").toUpperCase()],
     ["Reason", appt.reason || "—"],
   ];
@@ -89,7 +79,8 @@ export async function downloadAppointmentReceipt(req: Request, res: Response): P
   y += 20;
   doc.rect(left, y, 495, 70).fillAndStroke("#f0f9ff", "#bae6fd");
   doc.fillColor("#0c4a6e").fontSize(12).font("Helvetica-Bold").text("Consultation Fee", left + 20, y + 18);
-  const feeStr = appt.fee > 0 ? `INR ${appt.fee.toFixed(2)}` : "Not set";
+  const feeNum = Number(appt.fee ?? 0);
+  const feeStr = feeNum > 0 ? `PKR ${feeNum.toFixed(2)}` : "Not set";
   doc.fillColor("#0c4a6e").fontSize(22).font("Helvetica-Bold").text(feeStr, left + 20, y + 36, {
     width: 455,
     align: "right",

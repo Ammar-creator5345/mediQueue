@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { User, type UserRole } from "../models/User";
+import { findUserById, type UserRole } from "../repo/users";
 
 export interface AuthUser {
   id: string;
@@ -48,13 +48,13 @@ export async function requireAuth(
   const token = header.slice("Bearer ".length);
   try {
     const decoded = jwt.verify(token, getJwtSecret()) as AuthUser;
-    const userDoc = await User.findById(decoded.id);
+    const userDoc = await findUserById(decoded.id);
     if (!userDoc) {
       res.status(401).json({ error: "User no longer exists" });
       return;
     }
     req.user = {
-      id: userDoc._id.toString(),
+      id: userDoc.id,
       role: userDoc.role,
       email: userDoc.email,
       name: userDoc.name,

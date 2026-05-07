@@ -1,7 +1,6 @@
-import mongoose from "mongoose";
-import { QueueToken } from "../models/QueueToken";
+import { lastTokenForDay } from "../repo/queueTokens";
 
-export function dayKeyFor(doctorId: mongoose.Types.ObjectId | string, date = new Date()): string {
+export function dayKeyFor(doctorId: string, date = new Date()): string {
   const yyyy = date.getUTCFullYear();
   const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(date.getUTCDate()).padStart(2, "0");
@@ -9,8 +8,8 @@ export function dayKeyFor(doctorId: mongoose.Types.ObjectId | string, date = new
 }
 
 export async function nextTokenNumber(dayKey: string): Promise<number> {
-  const last = await QueueToken.findOne({ dayKey }).sort({ tokenNumber: -1 }).lean();
-  return (last?.tokenNumber ?? 0) + 1;
+  const last = await lastTokenForDay(dayKey);
+  return (last?.token_number ?? 0) + 1;
 }
 
 export function genApptCode(): string {

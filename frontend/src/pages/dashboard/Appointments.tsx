@@ -47,7 +47,7 @@ export function AppointmentsPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const canBook = user!.role === "patient" || user!.role === "receptionist" || user!.role === "admin";
-  const canCheckIn = user!.role === "receptionist" || user!.role === "admin" || user!.role === "patient";
+  const canCheckIn = user!.role === "receptionist";
 
   const {
     register,

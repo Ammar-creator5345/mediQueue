@@ -1,36 +1,29 @@
 import type { Request, Response } from "express";
-import mongoose from "mongoose";
-import { QueueToken } from "../models/QueueToken";
-import { Doctor } from "../models/Doctor";
-import { User } from "../models/User";
+import { listQueueTokens, createQueueToken, updateQueueToken as updateQueueTokenRow, findQueueTokenById } from "../repo/queueTokens";
+import { findDoctorById, findDoctorByUserId, findDoctorWithUserById } from "../repo/doctors";
+import { findUserById } from "../repo/users";
 import { AddWalkInSchema, UpdateQueueTokenSchema } from "../validators";
 import { dayKeyFor, nextTokenNumber } from "../services/queueHelpers";
 import { notifyUser, notifyRoles } from "../services/notify";
 
 async function serializeToken(t: any) {
-  const doctor = t.doctor && typeof t.doctor === "object" && "specialty" in t.doctor
-    ? t.doctor
-    : await Doctor.findById(t.doctor).populate("user");
-  const docUser = doctor?.user && typeof doctor.user === "object" && "name" in doctor.user
-    ? doctor.user
-    : doctor?.user
-    ? await User.findById(doctor.user)
-    : null;
+  const doctor = await findDoctorWithUserById(t.doctor_id);
+  const docUser = doctor ? { id: doctor.user_id, name: doctor.user_name } : null;
   return {
-    id: t._id.toString(),
-    tokenNumber: t.tokenNumber,
-    appointmentId: t.appointment?.toString() ?? null,
-    patientId: t.patient?.toString() ?? null,
-    patientName: t.patientName,
-    patientPhone: t.patientPhone ?? null,
-    doctorId: doctor?._id?.toString() ?? t.doctor?.toString() ?? "",
+    id: t.id,
+    tokenNumber: t.token_number,
+    appointmentId: t.appointment_id ?? null,
+    patientId: t.patient_id ?? null,
+    patientName: t.patient_name,
+    patientPhone: t.patient_phone ?? null,
+    doctorId: doctor?.id ?? t.doctor_id ?? "",
     doctorName: docUser?.name ?? "Doctor",
     specialty: doctor?.specialty ?? "",
     status: t.status,
     source: t.source,
     notes: t.notes ?? null,
-    createdAt: t.createdAt.toISOString(),
-    updatedAt: t.updatedAt.toISOString(),
+    createdAt: t.created_at.toISOString(),
+    updatedAt: t.updated_at.toISOString(),
   };
 }
 
@@ -44,30 +37,28 @@ function todayUTCDayPrefix(): string {
 
 export async function listQueue(req: Request, res: Response): Promise<void> {
   const u = req.user!;
-  const filter: Record<string, unknown> = {
-    dayKey: { $regex: `^${todayUTCDayPrefix()}` },
+  const filter: { dayKeyPrefix: string; doctorId?: string; status?: string; patientId?: string } = {
+    dayKeyPrefix: todayUTCDayPrefix(),
   };
   if (typeof req.query["doctorId"] === "string" && req.query["doctorId"]) {
-    filter["doctor"] = new mongoose.Types.ObjectId(req.query["doctorId"]);
+    filter.doctorId = req.query["doctorId"];
   }
   if (typeof req.query["status"] === "string" && req.query["status"]) {
-    filter["status"] = req.query["status"];
+    filter.status = req.query["status"];
   }
   if (u.role === "doctor") {
-    const doc = await Doctor.findOne({ user: new mongoose.Types.ObjectId(u.id) });
+    const doc = await findDoctorByUserId(u.id);
     if (!doc) {
       res.json([]);
       return;
     }
     // Doctor isolation: they can ONLY see their own queue regardless of any doctorId query
-    filter["doctor"] = doc._id;
+    filter.doctorId = doc.id;
   } else if (u.role === "patient") {
-    filter["patient"] = new mongoose.Types.ObjectId(u.id);
+    filter.patientId = u.id;
   }
 
-  const tokens = await QueueToken.find(filter)
-    .populate({ path: "doctor", populate: { path: "user" } })
-    .sort({ tokenNumber: 1 });
+  const tokens = await listQueueTokens(filter);
   const out = [];
   for (const t of tokens) out.push(await serializeToken(t));
   res.json(out);
@@ -80,16 +71,18 @@ export async function addWalkIn(req: Request, res: Response): Promise<void> {
     return;
   }
   const data = parsed.data;
-  const doctor = await Doctor.findById(data.doctorId).populate("user");
+  const doctor = await findDoctorWithUserById(data.doctorId);
   if (!doctor) {
     res.status(404).json({ error: "Doctor not found" });
     return;
   }
-  const dayKey = dayKeyFor(doctor._id);
+  const dayKey = dayKeyFor(doctor.id);
   const tokenNumber = await nextTokenNumber(dayKey);
-  const token = await QueueToken.create({
+  const token = await createQueueToken({
     tokenNumber,
-    doctor: doctor._id,
+    appointmentId: null,
+    patientId: null,
+    doctorId: doctor.id,
     patientName: data.patientName,
     patientPhone: data.patientPhone ?? null,
     notes: data.notes ?? null,
@@ -98,21 +91,17 @@ export async function addWalkIn(req: Request, res: Response): Promise<void> {
     dayKey,
   });
 
-  const docUser: any = doctor.user;
+  const docUser: any = { id: doctor.user_id, name: doctor.user_name };
   await Promise.all([
-    docUser?._id ? notifyUser(docUser._id, "Walk-in added to queue", `${data.patientName} is in your queue with token #${tokenNumber}.`) : Promise.resolve(),
+    docUser?.id ? notifyUser(docUser.id, "Walk-in added to queue", `${data.patientName} is in your queue with token #${tokenNumber}.`) : Promise.resolve(),
     notifyRoles(["admin"], "Walk-in registered", `${data.patientName} → ${docUser?.name ?? "Doctor"} (token #${tokenNumber}).`),
   ]);
 
-  const populated = await QueueToken.findById(token._id).populate({
-    path: "doctor",
-    populate: { path: "user" },
-  });
-  res.status(201).json(await serializeToken(populated));
+  res.status(201).json(await serializeToken(token));
 }
 
 export async function updateQueueToken(req: Request, res: Response): Promise<void> {
-  const id = req.params["id"];
+  const id = String(req.params["id"] ?? "");
   if (!id) {
     res.status(400).json({ error: "id required" });
     return;
@@ -122,38 +111,35 @@ export async function updateQueueToken(req: Request, res: Response): Promise<voi
     res.status(400).json({ error: "Validation error", issues: parsed.error.issues });
     return;
   }
-  const update: Record<string, unknown> = { status: parsed.data.status };
+  const update: any = { status: parsed.data.status };
   if (parsed.data.notes !== undefined) update["notes"] = parsed.data.notes;
 
-  const t = await QueueToken.findByIdAndUpdate(id, update, { new: true }).populate({
-    path: "doctor",
-    populate: { path: "user" },
-  });
+  const t = await updateQueueTokenRow(id, update);
   if (!t) {
     res.status(404).json({ error: "Token not found" });
     return;
   }
 
-  if (t.appointment && (parsed.data.status === "completed" || parsed.data.status === "skipped")) {
-    const { Appointment } = await import("../models/Appointment");
-    await Appointment.findByIdAndUpdate(t.appointment, {
+  if (t.appointment_id && (parsed.data.status === "completed" || parsed.data.status === "skipped")) {
+    const { updateAppointment } = await import("../repo/appointments");
+    await updateAppointment(t.appointment_id, {
       status: parsed.data.status === "completed" ? "completed" : "no_show",
-    });
+    } as any);
   }
 
-  if (t.patient) {
-    let title = `Token #${t.tokenNumber} updated`;
+  if (t.patient_id) {
+    let title = `Token #${t.token_number} updated`;
     let body = `Your token status is now ${parsed.data.status}.`;
     if (parsed.data.status === "called") body = `You have been called. Please proceed to the consultation room.`;
     if (parsed.data.status === "in_progress") body = `Your consultation has started.`;
     if (parsed.data.status === "completed") body = `Your consultation is complete. Thank you.`;
-    await notifyUser(t.patient, title, body);
+    await notifyUser(t.patient_id, title, body);
   }
 
   // Notify receptionists on completion/skip so they can keep flow moving
   if (parsed.data.status === "completed" || parsed.data.status === "skipped") {
     await notifyRoles(["receptionist"], "Queue update",
-      `Token #${t.tokenNumber} (${t.patientName}) marked ${parsed.data.status}.`);
+      `Token #${t.token_number} (${t.patient_name}) marked ${parsed.data.status}.`);
   }
 
   res.json(await serializeToken(t));

@@ -1,38 +1,31 @@
 import type { Request, Response } from "express";
-import mongoose from "mongoose";
-import { Notification } from "../models/Notification";
+import { listNotificationsForUser, markNotificationReadForUser } from "../repo/notifications";
 
 function serialize(n: any) {
   return {
-    id: n._id.toString(),
-    userId: n.user.toString(),
+    id: n.id,
+    userId: n.user_id,
     title: n.title,
     body: n.body,
     read: n.read,
-    createdAt: n.createdAt.toISOString(),
+    createdAt: n.created_at.toISOString(),
   };
 }
 
 export async function listNotifications(req: Request, res: Response): Promise<void> {
   const u = req.user!;
-  const items = await Notification.find({ user: new mongoose.Types.ObjectId(u.id) })
-    .sort({ createdAt: -1 })
-    .limit(50);
+  const items = await listNotificationsForUser(u.id);
   res.json(items.map(serialize));
 }
 
 export async function markNotificationRead(req: Request, res: Response): Promise<void> {
-  const id = req.params["id"];
+  const id = String(req.params["id"] ?? "");
   if (!id) {
     res.status(400).json({ error: "id required" });
     return;
   }
   const u = req.user!;
-  const n = await Notification.findOneAndUpdate(
-    { _id: id, user: new mongoose.Types.ObjectId(u.id) },
-    { read: true },
-    { new: true }
-  );
+  const n = await markNotificationReadForUser(u.id, id);
   if (!n) {
     res.status(404).json({ error: "Notification not found" });
     return;

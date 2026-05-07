@@ -1,8 +1,8 @@
 import type { Request, Response } from "express";
-import { Appointment } from "../models/Appointment";
-import { QueueToken } from "../models/QueueToken";
-import { Doctor } from "../models/Doctor";
-import { User } from "../models/User";
+import { countAppointmentsInRange, appointmentsPerDay, appointmentStatusDistribution, doctorUtilizationSince } from "../repo/appointments";
+import { countTokensByDayPrefixAndStatus, queueStatusDistributionForDayPrefix } from "../repo/queueTokens";
+import { countDoctors, findDoctorWithUserById } from "../repo/doctors";
+import { countPatients } from "../repo/users";
 
 function startOfTodayUTC(): Date {
   const d = new Date();
@@ -24,12 +24,12 @@ export async function getReportSummary(_req: Request, res: Response): Promise<vo
 
   const [totalAppointmentsToday, waitingTokens, inProgressTokens, completedToday, totalDoctors, totalPatients] =
     await Promise.all([
-      Appointment.countDocuments({ scheduledAt: { $gte: today, $lt: tomorrow } }),
-      QueueToken.countDocuments({ dayKey: { $regex: `^${dayPrefix}` }, status: "waiting" }),
-      QueueToken.countDocuments({ dayKey: { $regex: `^${dayPrefix}` }, status: "in_progress" }),
-      QueueToken.countDocuments({ dayKey: { $regex: `^${dayPrefix}` }, status: "completed" }),
-      Doctor.countDocuments(),
-      User.countDocuments({ role: "patient" }),
+      countAppointmentsInRange(today, tomorrow),
+      countTokensByDayPrefixAndStatus(dayPrefix, "waiting"),
+      countTokensByDayPrefixAndStatus(dayPrefix, "in_progress"),
+      countTokensByDayPrefixAndStatus(dayPrefix, "completed"),
+      countDoctors(),
+      countPatients(),
     ]);
 
   res.json({
@@ -47,25 +47,9 @@ export async function getAppointmentsPerDay(req: Request, res: Response): Promis
   const today = startOfTodayUTC();
   const start = new Date(today.getTime() - (days - 1) * 86400000);
 
-  const rows = await Appointment.aggregate([
-    { $match: { scheduledAt: { $gte: start, $lt: new Date(today.getTime() + 86400000) } } },
-    {
-      $group: {
-        _id: {
-          y: { $year: "$scheduledAt" },
-          m: { $month: "$scheduledAt" },
-          d: { $dayOfMonth: "$scheduledAt" },
-        },
-        count: { $sum: 1 },
-      },
-    },
-  ]);
-
-  const map = new Map<string, number>();
-  for (const r of rows) {
-    const date = `${r._id.y}-${String(r._id.m).padStart(2, "0")}-${String(r._id.d).padStart(2, "0")}`;
-    map.set(date, r.count);
-  }
+  const end = new Date(today.getTime() + 86400000);
+  const rows = await appointmentsPerDay(start, end);
+  const map = new Map<string, number>(rows.map((r) => [r.date, r.count]));
 
   const out: Array<{ date: string; count: number }> = [];
   for (let i = 0; i < days; i++) {
@@ -77,38 +61,25 @@ export async function getAppointmentsPerDay(req: Request, res: Response): Promis
 }
 
 export async function getStatusDistribution(_req: Request, res: Response): Promise<void> {
-  const rows = await Appointment.aggregate([
-    { $group: { _id: "$status", count: { $sum: 1 } } },
-  ]);
-  res.json(rows.map((r) => ({ label: r._id, count: r.count })));
+  res.json(await appointmentStatusDistribution());
 }
 
 export async function getQueueStatusReport(_req: Request, res: Response): Promise<void> {
   const dayPrefix = todayDayKeyPrefix();
-  const rows = await QueueToken.aggregate([
-    { $match: { dayKey: { $regex: `^${dayPrefix}` } } },
-    { $group: { _id: "$status", count: { $sum: 1 } } },
-  ]);
-  res.json(rows.map((r) => ({ label: r._id, count: r.count })));
+  res.json(await queueStatusDistributionForDayPrefix(dayPrefix));
 }
 
 export async function getDoctorUtilization(_req: Request, res: Response): Promise<void> {
   const today = startOfTodayUTC();
   const weekAgo = new Date(today.getTime() - 6 * 86400000);
-  const rows = await Appointment.aggregate([
-    { $match: { scheduledAt: { $gte: weekAgo, $lt: new Date(today.getTime() + 86400000) } } },
-    { $group: { _id: "$doctor", count: { $sum: 1 } } },
-  ]);
+  const rows = await doctorUtilizationSince(weekAgo, new Date(today.getTime() + 86400000));
   const out = [];
   for (const r of rows) {
-    const d = await Doctor.findById(r._id).populate("user");
+    const d = await findDoctorWithUserById(r.doctor_id);
     if (!d) continue;
-    const u = d.user && typeof d.user === "object" && "name" in d.user
-      ? (d.user as any)
-      : await User.findById(d.user);
     out.push({
-      doctorId: d._id.toString(),
-      doctorName: u?.name ?? "Doctor",
+      doctorId: d.id,
+      doctorName: d.user_name ?? "Doctor",
       specialty: d.specialty,
       count: r.count,
     });

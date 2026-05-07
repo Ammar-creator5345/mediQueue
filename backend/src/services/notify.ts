@@ -1,14 +1,15 @@
-import mongoose from "mongoose";
-import { Notification } from "../models/Notification";
-import { User, type UserRole } from "../models/User";
+import { sql } from "../db/sql";
+import { listUsersByRoles, type UserRole } from "../repo/users";
 
 export async function notifyUser(
-  userId: mongoose.Types.ObjectId | string,
+  userId: string,
   title: string,
   body: string
 ): Promise<void> {
-  const id = typeof userId === "string" ? new mongoose.Types.ObjectId(userId) : userId;
-  await Notification.create({ user: id, title, body });
+  await sql(
+    `insert into notifications (user_id, title, body, read) values ($1, $2, $3, false)`,
+    [userId, title, body],
+  );
 }
 
 export async function notifyRoles(
@@ -17,9 +18,14 @@ export async function notifyRoles(
   body: string
 ): Promise<void> {
   if (roles.length === 0) return;
-  const users = await User.find({ role: { $in: roles } }).select("_id");
+  const users = await listUsersByRoles(roles);
   if (users.length === 0) return;
-  await Notification.insertMany(
-    users.map((u) => ({ user: u._id, title, body, read: false }))
+  await Promise.all(
+    users.map((u) =>
+      sql(
+        `insert into notifications (user_id, title, body, read) values ($1, $2, $3, false)`,
+        [u.id, title, body],
+      ),
+    ),
   );
 }

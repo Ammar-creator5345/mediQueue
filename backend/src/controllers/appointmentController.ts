@@ -1,9 +1,14 @@
 import type { Request, Response } from "express";
-import mongoose from "mongoose";
-import { Appointment } from "../models/Appointment";
-import { Doctor } from "../models/Doctor";
-import { User } from "../models/User";
-import { QueueToken } from "../models/QueueToken";
+import {
+  createAppointment as createAppointmentRow,
+  findAppointmentById,
+  listAppointments as listAppointmentRows,
+  findAppointmentConflict,
+  updateAppointment as updateAppointmentRow,
+} from "../repo/appointments";
+import { findDoctorByUserId, findDoctorWithUserById } from "../repo/doctors";
+import { findUserById } from "../repo/users";
+import { createQueueToken, findQueueTokenByAppointment } from "../repo/queueTokens";
 import { CreateAppointmentSchema, UpdateAppointmentSchema } from "../validators";
 import { dayKeyFor, nextTokenNumber, genApptCode } from "../services/queueHelpers";
 import { notifyUser, notifyRoles } from "../services/notify";
@@ -24,68 +29,64 @@ interface ApptJSON {
 }
 
 async function serialize(a: any): Promise<ApptJSON> {
-  const patient = a.patient && typeof a.patient === "object" && "name" in a.patient
-    ? a.patient
-    : await User.findById(a.patient);
-  const doctor = a.doctor && typeof a.doctor === "object" && "specialty" in a.doctor
-    ? a.doctor
-    : await Doctor.findById(a.doctor).populate("user");
-  const docUser = doctor?.user && typeof doctor.user === "object" && "name" in doctor.user
-    ? doctor.user
-    : doctor?.user
-    ? await User.findById(doctor.user)
-    : null;
+  const patient = await findUserById(a.patient_id);
+  const doctor = await findDoctorWithUserById(a.doctor_id);
+  const docUser = doctor ? { id: doctor.user_id, name: doctor.user_name } : null;
   return {
-    id: a._id.toString(),
+    id: a.id,
     code: a.code,
-    patientId: patient?._id?.toString() ?? a.patient?.toString() ?? "",
+    patientId: patient?.id ?? a.patient_id ?? "",
     patientName: patient?.name ?? "Unknown",
-    doctorId: doctor?._id?.toString() ?? a.doctor?.toString() ?? "",
+    doctorId: doctor?.id ?? a.doctor_id ?? "",
     doctorName: docUser?.name ?? "Doctor",
     specialty: doctor?.specialty ?? "",
-    scheduledAt: a.scheduledAt.toISOString(),
+    scheduledAt: new Date(a.scheduled_at).toISOString(),
     reason: a.reason ?? null,
     status: a.status,
-    fee: typeof a.fee === "number" ? a.fee : 0,
-    createdAt: a.createdAt.toISOString(),
+    fee: Number(a.fee ?? 0),
+    createdAt: a.created_at.toISOString(),
   };
 }
 
 export async function listAppointments(req: Request, res: Response): Promise<void> {
   const u = req.user!;
-  const filter: Record<string, unknown> = {};
+  const filter: {
+    patientId?: string;
+    doctorId?: string;
+    status?: string;
+    dateStart?: Date;
+    dateEnd?: Date;
+  } = {};
 
   if (u.role === "patient") {
-    filter["patient"] = new mongoose.Types.ObjectId(u.id);
+    filter.patientId = u.id;
   } else if (u.role === "doctor") {
-    const doc = await Doctor.findOne({ user: new mongoose.Types.ObjectId(u.id) });
+    const doc = await findDoctorByUserId(u.id);
     if (!doc) {
       res.json([]);
       return;
     }
-    filter["doctor"] = doc._id;
+    filter.doctorId = doc.id;
   }
 
   if (typeof req.query["status"] === "string" && req.query["status"]) {
-    filter["status"] = req.query["status"];
+    filter.status = req.query["status"];
   }
   if (typeof req.query["doctorId"] === "string" && req.query["doctorId"]) {
-    filter["doctor"] = new mongoose.Types.ObjectId(req.query["doctorId"]);
+    filter.doctorId = req.query["doctorId"];
   }
   if (typeof req.query["patientId"] === "string" && req.query["patientId"]) {
-    filter["patient"] = new mongoose.Types.ObjectId(req.query["patientId"]);
+    filter.patientId = req.query["patientId"];
   }
   if (typeof req.query["date"] === "string" && req.query["date"]) {
     const d = new Date(`${req.query["date"]}T00:00:00.000Z`);
     if (!isNaN(d.getTime())) {
-      filter["scheduledAt"] = { $gte: d, $lt: new Date(d.getTime() + 86400000) };
+      filter.dateStart = d;
+      filter.dateEnd = new Date(d.getTime() + 86400000);
     }
   }
 
-  const docs = await Appointment.find(filter)
-    .populate({ path: "patient" })
-    .populate({ path: "doctor", populate: { path: "user" } })
-    .sort({ scheduledAt: 1 });
+  const docs = await listAppointmentRows(filter);
 
   const out: ApptJSON[] = [];
   for (const d of docs) out.push(await serialize(d));
@@ -93,14 +94,12 @@ export async function listAppointments(req: Request, res: Response): Promise<voi
 }
 
 export async function getAppointment(req: Request, res: Response): Promise<void> {
-  const id = req.params["id"];
+  const id = String(req.params["id"] ?? "");
   if (!id) {
     res.status(400).json({ error: "id required" });
     return;
   }
-  const a = await Appointment.findById(id)
-    .populate({ path: "patient" })
-    .populate({ path: "doctor", populate: { path: "user" } });
+  const a = await findAppointmentById(id);
   if (!a) {
     res.status(404).json({ error: "Appointment not found" });
     return;
@@ -131,7 +130,7 @@ export async function createAppointment(req: Request, res: Response): Promise<vo
     return;
   }
 
-  const doctor = await Doctor.findById(data.doctorId).populate("user");
+  const doctor = await findDoctorWithUserById(data.doctorId);
   if (!doctor) {
     res.status(404).json({ error: "Doctor not found" });
     return;
@@ -143,61 +142,54 @@ export async function createAppointment(req: Request, res: Response): Promise<vo
     return;
   }
 
-  const conflict = await Appointment.findOne({
-    doctor: doctor._id,
-    scheduledAt,
-    status: { $ne: "cancelled" },
-  });
+  const conflict = await findAppointmentConflict(doctor.id, scheduledAt);
   if (conflict) {
     res.status(409).json({ error: "That slot is no longer available" });
     return;
   }
 
-  const appt = await Appointment.create({
+  const appt = await createAppointmentRow({
     code: genApptCode(),
-    patient: new mongoose.Types.ObjectId(patientId),
-    doctor: doctor._id,
+    patientId,
+    doctorId: doctor.id,
     scheduledAt,
     reason: data.reason ?? null,
     status: "scheduled",
-    fee: doctor.consultationFee ?? 0,
+    fee: Number(doctor.consultation_fee ?? 0),
   });
 
-  const patientUser = await User.findById(patientId);
-  const doctorUser = doctor.user && typeof doctor.user === "object" && "name" in doctor.user
-    ? (doctor.user as any)
-    : await User.findById(doctor.user);
+  const patientUser = await findUserById(patientId);
+  const doctorUser = { id: doctor.user_id, name: doctor.user_name };
   const whenStr = scheduledAt.toLocaleString();
 
   await Promise.all([
     notifyUser(patientId, "Appointment booked", `Your appointment ${appt.code} with ${doctorUser?.name ?? "the doctor"} is scheduled for ${whenStr}.`),
-    notifyUser(doctor.user, "New appointment assigned", `${patientUser?.name ?? "A patient"} booked appointment ${appt.code} for ${whenStr}.`),
+    notifyUser(doctor.user_id, "New appointment assigned", `${patientUser?.name ?? "A patient"} booked appointment ${appt.code} for ${whenStr}.`),
     notifyRoles(["receptionist", "admin"], "New appointment booked", `${patientUser?.name ?? "A patient"} → ${doctorUser?.name ?? "Doctor"} on ${whenStr} (${appt.code}).`),
   ]);
 
-  const populated = await Appointment.findById(appt._id)
-    .populate({ path: "patient" })
-    .populate({ path: "doctor", populate: { path: "user" } });
-  res.status(201).json(await serialize(populated));
+  res.status(201).json(await serialize(appt));
 }
 
-async function ensureCanModify(req: Request, appt: { patient: mongoose.Types.ObjectId; doctor: mongoose.Types.ObjectId }): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+type ModifyGuard = { ok: true } | { ok: false; status: number; error: string };
+
+async function ensureCanModify(req: Request, appt: { patient_id: string; doctor_id: string }): Promise<ModifyGuard> {
   const u = req.user!;
-  if (u.role === "admin" || u.role === "receptionist") return { ok: true };
+  if (u.role === "admin" || u.role === "receptionist") return { ok: true as const };
   if (u.role === "patient") {
-    if (appt.patient.toString() === u.id) return { ok: true };
-    return { ok: false, status: 403, error: "You can only modify your own appointments" };
+    if (appt.patient_id.toString() === u.id) return { ok: true as const };
+    return { ok: false as const, status: 403, error: "You can only modify your own appointments" };
   }
   if (u.role === "doctor") {
-    const doc = await Doctor.findOne({ user: new mongoose.Types.ObjectId(u.id) });
-    if (doc && appt.doctor.toString() === doc._id.toString()) return { ok: true };
-    return { ok: false, status: 403, error: "You can only modify appointments assigned to you" };
+    const doc = await findDoctorByUserId(u.id);
+    if (doc && appt.doctor_id.toString() === doc.id.toString()) return { ok: true as const };
+    return { ok: false as const, status: 403, error: "You can only modify appointments assigned to you" };
   }
-  return { ok: false, status: 403, error: "Forbidden" };
+  return { ok: false as const, status: 403, error: "Forbidden" };
 }
 
 export async function updateAppointment(req: Request, res: Response): Promise<void> {
-  const id = req.params["id"];
+  const id = String(req.params["id"] ?? "");
   if (!id) {
     res.status(400).json({ error: "id required" });
     return;
@@ -207,25 +199,23 @@ export async function updateAppointment(req: Request, res: Response): Promise<vo
     res.status(400).json({ error: "Validation error", issues: parsed.error.issues });
     return;
   }
-  const existing = await Appointment.findById(id);
+  const existing = await findAppointmentById(id);
   if (!existing) {
     res.status(404).json({ error: "Appointment not found" });
     return;
   }
   const guard = await ensureCanModify(req, existing);
-  if (!guard.ok) {
+  if (guard.ok === false) {
     res.status(guard.status).json({ error: guard.error });
     return;
   }
 
-  const update: Record<string, unknown> = {};
+  const update: any = {};
   if (parsed.data.status) update["status"] = parsed.data.status;
   if (parsed.data.reason !== undefined) update["reason"] = parsed.data.reason;
-  if (parsed.data.scheduledAt) update["scheduledAt"] = new Date(parsed.data.scheduledAt);
+  if (parsed.data.scheduledAt) update["scheduled_at"] = new Date(parsed.data.scheduledAt);
 
-  const a = await Appointment.findByIdAndUpdate(id, update, { new: true })
-    .populate({ path: "patient" })
-    .populate({ path: "doctor", populate: { path: "user" } });
+  const a = await updateAppointmentRow(id, update);
   if (!a) {
     res.status(404).json({ error: "Appointment not found" });
     return;
@@ -234,29 +224,29 @@ export async function updateAppointment(req: Request, res: Response): Promise<vo
 }
 
 export async function cancelAppointment(req: Request, res: Response): Promise<void> {
-  const id = req.params["id"];
+  const id = String(req.params["id"] ?? "");
   if (!id) {
     res.status(400).json({ error: "id required" });
     return;
   }
-  const existing = await Appointment.findById(id).populate({ path: "doctor", populate: { path: "user" } });
+  const existing = await findAppointmentById(id);
   if (!existing) {
     res.status(404).json({ error: "Appointment not found" });
     return;
   }
   const guard = await ensureCanModify(req, existing);
-  if (!guard.ok) {
+  if (guard.ok === false) {
     res.status(guard.status).json({ error: guard.error });
     return;
   }
-  await Appointment.findByIdAndUpdate(id, { status: "cancelled" });
+  await updateAppointmentRow(id, { status: "cancelled" } as any);
 
-  const patientUser = await User.findById(existing.patient);
-  const doctorAny = existing.doctor as any;
-  const doctorUserId = doctorAny?.user?._id ?? doctorAny?.user;
-  const doctorName = doctorAny?.user?.name ?? "Doctor";
+  const patientUser = await findUserById(existing.patient_id);
+  const doctor = await findDoctorWithUserById(existing.doctor_id);
+  const doctorUserId = doctor?.user_id ?? null;
+  const doctorName = doctor?.user_name ?? "Doctor";
   await Promise.all([
-    notifyUser(existing.patient, "Appointment cancelled", `Your appointment ${existing.code} was cancelled.`),
+    notifyUser(existing.patient_id, "Appointment cancelled", `Your appointment ${existing.code} was cancelled.`),
     doctorUserId ? notifyUser(doctorUserId, "Appointment cancelled", `${patientUser?.name ?? "A patient"} cancelled appointment ${existing.code}.`) : Promise.resolve(),
     notifyRoles(["receptionist", "admin"], "Appointment cancelled", `${patientUser?.name ?? "A patient"} cancelled appointment ${existing.code} with ${doctorName}.`),
   ]);
@@ -265,12 +255,12 @@ export async function cancelAppointment(req: Request, res: Response): Promise<vo
 }
 
 export async function checkInAppointment(req: Request, res: Response): Promise<void> {
-  const id = req.params["id"];
+  const id = String(req.params["id"] ?? "");
   if (!id) {
     res.status(400).json({ error: "id required" });
     return;
   }
-  const appt = await Appointment.findById(id);
+  const appt = await findAppointmentById(id);
   if (!appt) {
     res.status(404).json({ error: "Appointment not found" });
     return;
@@ -280,70 +270,59 @@ export async function checkInAppointment(req: Request, res: Response): Promise<v
     return;
   }
 
-  const existing = await QueueToken.findOne({ appointment: appt._id });
+  const existing = await findQueueTokenByAppointment(appt.id);
   if (existing) {
-    const populated = await QueueToken.findById(existing._id)
-      .populate({ path: "patient" })
-      .populate({ path: "doctor", populate: { path: "user" } });
-    res.status(200).json(await serializeToken(populated));
+    res.status(200).json(await serializeToken(existing));
     return;
   }
 
-  const dayKey = dayKeyFor(appt.doctor);
+  const dayKey = dayKeyFor(appt.doctor_id);
   const tokenNumber = await nextTokenNumber(dayKey);
-  const patient = await User.findById(appt.patient);
-  const doctor = await Doctor.findById(appt.doctor).populate("user");
-  const docUser: any = doctor?.user;
+  const patient = await findUserById(appt.patient_id);
+  const doctor = await findDoctorWithUserById(appt.doctor_id);
+  const docUser: any = doctor ? { id: doctor.user_id, name: doctor.user_name } : null;
 
-  const token = await QueueToken.create({
+  const token = await createQueueToken({
     tokenNumber,
-    appointment: appt._id,
-    patient: appt.patient,
+    appointmentId: appt.id,
+    patientId: appt.patient_id,
     patientName: patient?.name ?? "Patient",
-    doctor: appt.doctor,
+    patientPhone: patient?.phone ?? null,
+    doctorId: appt.doctor_id,
     status: "waiting",
     source: "appointment",
+    notes: null,
     dayKey,
   });
 
-  appt.status = "checked_in";
-  await appt.save();
+  await updateAppointmentRow(appt.id, { status: "checked_in" } as any);
 
   await Promise.all([
-    notifyUser(appt.patient, `Token #${tokenNumber} issued`, `You are checked in. Your token number is ${tokenNumber}.`),
-    docUser?._id ? notifyUser(docUser._id, "Patient checked in", `${patient?.name ?? "A patient"} is in your queue with token #${tokenNumber}.`) : Promise.resolve(),
+    notifyUser(appt.patient_id, `Token #${tokenNumber} issued`, `You are checked in. Your token number is ${tokenNumber}.`),
+    docUser?.id ? notifyUser(docUser.id, "Patient checked in", `${patient?.name ?? "A patient"} is in your queue with token #${tokenNumber}.`) : Promise.resolve(),
     notifyRoles(["receptionist", "admin"], "Patient checked in", `${patient?.name ?? "Patient"} → ${docUser?.name ?? "Doctor"} (token #${tokenNumber}).`),
   ]);
 
-  const populated = await QueueToken.findById(token._id)
-    .populate({ path: "patient" })
-    .populate({ path: "doctor", populate: { path: "user" } });
-  res.status(201).json(await serializeToken(populated));
+  res.status(201).json(await serializeToken(token));
 }
 
 async function serializeToken(t: any) {
-  const doctor = t.doctor && typeof t.doctor === "object" && "specialty" in t.doctor
-    ? t.doctor
-    : await Doctor.findById(t.doctor).populate("user");
-  const docUser = doctor?.user && typeof doctor.user === "object" && "name" in doctor.user
-    ? doctor.user
-    : doctor?.user
-    ? await User.findById(doctor.user)
-    : null;
+  const doctor = await findDoctorWithUserById(t.doctor_id);
+  const docUser = doctor ? { id: doctor.user_id, name: doctor.user_name } : null;
   return {
-    id: t._id.toString(),
-    tokenNumber: t.tokenNumber,
-    appointmentId: t.appointment?.toString() ?? null,
-    patientId: t.patient?.toString() ?? null,
-    patientName: t.patientName,
-    patientPhone: t.patientPhone ?? null,
-    doctorId: doctor?._id?.toString() ?? t.doctor?.toString() ?? "",
+    id: t.id,
+    tokenNumber: t.token_number,
+    appointmentId: t.appointment_id ?? null,
+    patientId: t.patient_id ?? null,
+    patientName: t.patient_name,
+    patientPhone: t.patient_phone ?? null,
+    doctorId: doctor?.id ?? t.doctor_id ?? "",
     doctorName: docUser?.name ?? "Doctor",
     specialty: doctor?.specialty ?? "",
     status: t.status,
     source: t.source,
     notes: t.notes ?? null,
-    createdAt: t.createdAt.toISOString(),
-    updatedAt: t.updatedAt.toISOString(),
+    createdAt: t.created_at.toISOString(),
+    updatedAt: t.updated_at.toISOString(),
   };
 }

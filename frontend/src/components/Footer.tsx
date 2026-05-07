@@ -11,8 +11,13 @@ export function Footer() {
               MediQueue helps clinics streamline appointment scheduling and live patient queues with role-based dashboards.
             </p>
           </div>
-          <div className="text-xs text-muted-foreground">
-            &copy; {new Date().getFullYear()} MediQueue. Built for modern clinics.
+          <div className="flex flex-col items-end justify-end gap-2">
+            <div>
+              <p className="text-sm text-muted-foreground">Final Year Project By <span className="font-bold">Saqib Javed</span></p>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              &copy; {new Date().getFullYear()} MediQueue. Built for modern clinics.
+            </div>
           </div>
         </div>
       </div>
