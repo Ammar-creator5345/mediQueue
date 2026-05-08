@@ -24,7 +24,7 @@ const schema = yup.object({
 });
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const {login } = useAuth();
   const [, navigate] = useLocation();
   const [error, setError] = useState<string | null>(null);
   const {
