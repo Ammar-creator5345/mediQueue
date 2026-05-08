@@ -6,7 +6,7 @@ export type SqlParams = any[];
 export async function sql<T = any>(text: string, params: SqlParams = []): Promise<T[]> {
   const pool = getPool();
   const res = await pool.query(text, params);
-  return res.rows as T[];
+  return res.rows as T[]
 }
 
 export async function sqlOne<T = any>(text: string, params: SqlParams = []): Promise<T | null> {
